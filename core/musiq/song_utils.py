@@ -75,3 +75,27 @@ def format_seconds(seconds):
     formatted += '{0:02d}:{1:02d}'.format(int(minutes), int(seconds))
     return formatted
 
+def get_metadata(path):
+    '''gathers the metadata for the song at the given location.
+    'title' and 'duration' is read from tags, the 'url' is built from the location'''
+
+    parsed = mutagen.File(path, easy=True)
+    if parsed is None:
+        raise ValueError
+    metadata = dict()
+
+    if parsed.tags is not None:
+        if 'artist' in parsed.tags:
+            metadata['artist'] = parsed.tags['artist'][0]
+        if 'title' in parsed.tags:
+            metadata['title'] = parsed.tags['title'][0]
+    if 'artist' not in metadata:
+        metadata['artist'] = ''
+    if 'title' not in metadata:
+        metadata['title'] = os.path.split(path)[1]
+    if parsed.info is not None and parsed.info.length is not None:
+        metadata['duration'] = parsed.info.length
+    else:
+        metadata['duration'] = -1
+
+    return metadata

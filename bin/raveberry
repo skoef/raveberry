@@ -86,7 +86,7 @@ def user_install():
             print('please install missing packages: sudo apt-get install -y ' + ' '.join(missing_packages))
             sys.exit(1)
     else:
-        print('Warning: dpkg is not installed, could not check if dependencies are installed! Use at your own rist!')
+        print('Warning: dpkg is not installed, could not check if dependencies are installed! Use at your own risk!')
 
     read_config()
     subprocess.call(['/bin/bash', 'setup/user_install.sh'])

@@ -99,6 +99,7 @@ else:
 
                 path('list_subdirectories/', base.settings.list_subdirectories, name='list_subdirectories'),
                 path('scan_library/', base.settings.scan_library, name='scan_library'),
+                path('create_playlists/', base.settings.create_playlists, name='create_playlists'),
 
                 path('analyse/', base.settings.analyse, name='analyse'),
 

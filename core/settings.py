@@ -11,7 +11,7 @@ from django.conf import settings
 from mutagen import MutagenError
 
 from main import settings
-from core.models import Setting, ArchivedSong
+from core.models import Setting, ArchivedSong, ArchivedPlaylist, PlaylistEntry
 from core.models import PlayLog
 from core.models import RequestLog
 import core.state_handler as state_handler
@@ -519,6 +519,75 @@ class Settings:
         self.update_state()
 
         self.base.logger.info(f'done scanning in {library_path}')
+    @option
+    def create_playlists(self, request):
+        library_link = os.path.join(settings.SONGS_CACHE_DIR, 'local_library')
+        if not os.path.islink(library_link):
+            return HttpResponseBadRequest('No library set')
+
+        threading.Thread(target=self._create_playlists, daemon=True).start()
+
+        return HttpResponse(f'started creating playlsts. This could take a while')
+    def _create_playlists(self):
+        local_files = ArchivedSong.objects.filter(url__startswith='local_library').count()
+
+        library_link = os.path.join(settings.SONGS_CACHE_DIR, 'local_library')
+        library_path = os.path.abspath(library_link)
+
+        self.base.logger.info(f'started creating playlists in {library_path}')
+
+        self.scan_progress = f'{local_files} / 0 / 0'
+        self.update_state()
+
+        scan_start = time.time()
+        last_update = scan_start
+        update_frequency = 0.5
+        files_processed = 0
+        files_added = 0
+        for (dirpath, _, filenames) in os.walk(library_path):
+            now = time.time()
+            if now - last_update > update_frequency:
+                last_update = now
+                self.scan_progress = f'{local_files} / {files_processed} / {files_added}'
+                self.update_state()
+
+            song_urls = []
+            # unfortunately there is no way to access track numbers accross different file types
+            # so we have to add songs to playlists alphabetically
+            for filename in sorted(filenames):
+                files_processed += 1
+                path = os.path.join(dirpath, filename)
+                library_relative_path = path[len(library_path) + 1:]
+                external_url = os.path.join('local_library', library_relative_path)
+                if ArchivedSong.objects.filter(url=external_url).exists():
+                    song_urls.append(external_url)
+
+            if not song_urls:
+                continue
+
+            playlist_id = os.path.join('local_library', dirpath[len(library_path) + 1:])
+            playlist_title = os.path.split(dirpath)[1]
+            playlist, created = ArchivedPlaylist.objects.get_or_create(list_id=playlist_id,
+                                                                       title=playlist_title,
+                                                                       counter=0)
+            if not created:
+                # this playlist already exists, skip
+                files_processed += len(filenames)
+                continue
+
+            song_index = 0
+            for external_url in song_urls:
+                PlaylistEntry.objects.create(
+                    playlist=playlist,
+                    index=song_index,
+                    url=external_url,
+                )
+                files_added += 1
+                song_index += 1
+        self.scan_progress = f'{local_files} / {files_processed} / {files_added}'
+        self.update_state()
+
+        self.base.logger.info(f'finished creating playlists in {library_path}')
 
     @option
     def analyse(self, request):

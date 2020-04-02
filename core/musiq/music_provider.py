@@ -144,14 +144,17 @@ class PlaylistProvider(MusicProvider):
             return None
 
         type = song_utils.determine_playlist_type(archived_playlist)
-        if type == 'youtube':
+        if type == 'local':
+            from core.musiq.localdrive import LocalPlaylistProvider
+            provider_class = LocalPlaylistProvider
+        elif type == 'youtube':
             from core.musiq.youtube import YoutubePlaylistProvider
             provider_class = YoutubePlaylistProvider
         elif type == 'spotify':
             from core.musiq.spotify import SpotifyPlaylistProvider
             provider_class = SpotifyPlaylistProvider
         else:
-            raise NotImplemented(f'No provider for given playlist: {query}, {key}')
+            raise NotImplementedError(f'No provider for given playlist: {query}, {key}')
         provider = provider_class(musiq, query, key)
         return provider
 

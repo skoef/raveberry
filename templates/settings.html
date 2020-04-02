@@ -30,6 +30,7 @@
 
     urls['list_subdirectories'] = '{% url 'list_subdirectories' %}';
     urls['scan_library'] = '{% url 'scan_library' %}';
+    urls['create_playlists'] = '{% url 'create_playlists' %}';
 
 	urls['analyse'] = '{% url 'analyse' %}';
 
@@ -206,6 +207,12 @@
 	<li class="list-group-item list_item centered">
 		<button class="btn" id="scan_library">Scan Folder</button>
 	</li>
+    <li class="list-group-item">
+        You can also automatically create a playlist for each folder after scanning a library. Wait until the library scan completed!
+    </li>
+    <li class="list-group-item list_item centered">
+        <button class="btn" id="create_playlists">Create Playlists</button>
+    </li>
 </ul>
 
 <ul class="list-group" id="settings">

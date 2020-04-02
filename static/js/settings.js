@@ -245,6 +245,13 @@ $(document).ready(function() {
 			errorToast(response.responseText);
 		});
 	});
+	$('#create_playlists').on('click tap', function() {
+		$.post(urls['create_playlists']).done(function(response) {
+			successToast(response);
+		}).fail(function(response) {
+			errorToast(response.responseText);
+		});
+	});
 
 	let today = new Date();
 	let yesterday = new Date();

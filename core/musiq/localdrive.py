@@ -3,7 +3,7 @@ import os
 from django.http import HttpResponseBadRequest
 
 from core.musiq import song_utils
-from core.musiq.music_provider import SongProvider
+from core.musiq.music_provider import SongProvider, PlaylistProvider
 from main import settings
 
 
@@ -60,3 +60,19 @@ class LocalSongProvider(SongProvider):
     def request_radio(self, ip):
         return HttpResponseBadRequest('No automatic suggestion for local files available (yet).')
 
+class LocalPlaylistProvider(PlaylistProvider):
+
+    @staticmethod
+    def get_id_from_external_url(url):
+        return url[len('local_library/'):]
+
+    def __init__(self, musiq, query, key):
+        super().__init__(musiq, query, key)
+        self.type = 'local'
+
+    def search_id(self):
+        self.error = 'local playlists can not be downloaded'
+        return None
+
+    def is_radio(self):
+        return False

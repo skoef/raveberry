@@ -4,6 +4,7 @@ import sys
 import time
 import subprocess
 import configparser
+import pkg_resources
 import getpass
 import shutil
 
@@ -24,26 +25,35 @@ def main():
         usage()
         sys.exit(1)
     command = sys.argv[1]
-    if command not in ['run', 'system-install', 'help']:
-        usage()
-        sys.exit(1)
     if command == 'help':
         usage()
-    if command == 'run':
+    elif command == 'run':
         run_server()
-    if command == 'system-install':
+    elif command == 'system-install':
         system_install()
+    elif command.lstrip('-') == 'version':
+        version()
+    else:
+        usage()
+        sys.exit(1)
 
 
 def usage():
-    print(f'''usage: {sys.argv[0]} [run | system-install | help]
+    print(f'''usage: {sys.argv[0]} [run | system-install | system-upgrade | help | version]
 
 run                     run a basic version of raveberry
 system-install          install raveberry into the system
+version                 print the version of this module
 help                    show this help and exit
 
 For more info visit https://github.com/raveberry/raveberry''')
 
+def version():
+    try:
+        print(pkg_resources.require('raveberry')[0].version)
+    except pkg_resources.DistributionNotFound:
+        print('raveberry is not currently installed')
+        sys.exit(1)
 
 def run_server():
     if not os.path.isfile('db.sqlite3'):

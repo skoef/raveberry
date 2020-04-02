@@ -1,7 +1,9 @@
 import os
+import random
 
 from django.http import HttpResponseBadRequest
 
+from core.models import PlaylistEntry
 from core.musiq import song_utils
 from core.musiq.music_provider import SongProvider, PlaylistProvider
 from main import settings
@@ -28,6 +30,8 @@ class LocalSongProvider(SongProvider):
         self.type = 'local'
 
     def check_cached(self):
+        if not self._check_cached():
+            return False
         return os.path.isfile(self.get_path())
 
     def check_downloadable(self):
@@ -57,8 +61,26 @@ class LocalSongProvider(SongProvider):
     def get_external_url(self):
         return 'local_library/' + self.id
 
+    def _get_corresponding_playlist(self):
+        entries = PlaylistEntry.objects.filter(url=self.get_external_url())
+        if not entries.exists():
+            raise PlaylistEntry.DoesNotExist()
+        # There should be only one playlist containing this song. If there are more, choose any
+        index = random.randint(0, entries.count() - 1)
+        entry = entries.all()[index]
+        playlist = entry.playlist
+        return playlist
+
+    def get_suggestion(self):
+        playlist = self._get_corresponding_playlist()
+        entries = playlist.entries
+        index = random.randint(0, entries.count() - 1)
+        entry = entries.all()[index]
+        return entry.url
+
     def request_radio(self, ip):
-        return HttpResponseBadRequest('No automatic suggestion for local files available (yet).')
+        playlist = self._get_corresponding_playlist()
+        return self.musiq._request_music(ip, playlist.title, playlist.id, True, 'local', archive=False, manually_requested=False)
 
 class LocalPlaylistProvider(PlaylistProvider):
 

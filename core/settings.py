@@ -52,7 +52,7 @@ class Settings:
         self.bluetoothctl = None
         self.bluetooth_devices = []
         self.homewifi = Setting.objects.get_or_create(key='homewifi', defaults={'value': ''})[0].value
-        self.scan_progress = '0 / 0'
+        self.scan_progress = '0 / 0 / 0'
 
     def state_dict(self):
         state_dict = self.base.state_dict()
@@ -455,7 +455,7 @@ class Settings:
 
         return HttpResponse(f'started scanning in {library_path}. This could take a while')
     def _scan_library(self, library_path):
-        self.scan_progress = '0 / 0'
+        self.scan_progress = '0 / 0 / 0'
         self.update_state()
 
         scan_start = time.time()
@@ -466,7 +466,7 @@ class Settings:
             now = time.time()
             if now - last_update > update_frequency:
                 last_update = now
-                self.scan_progress = f'{filecount} / 0'
+                self.scan_progress = f'{filecount} / 0 / 0'
                 self.update_state()
             if os.path.abspath(dirpath) == os.path.abspath(settings.SONGS_CACHE_DIR):
                 # do not add files handled by raveberry as local files
@@ -482,10 +482,11 @@ class Settings:
 
         self.base.logger.info(f'started scanning in {library_path}')
 
-        self.scan_progress = f'{filecount} / 0'
+        self.scan_progress = f'{filecount} / 0 / 0'
         self.update_state()
 
         files_scanned = 0
+        files_added = 0
         for (dirpath, _, filenames) in os.walk(library_path):
             if os.path.abspath(dirpath) == os.path.abspath(settings.SONGS_CACHE_DIR):
                 # do not add files handled by raveberry as local files
@@ -493,7 +494,7 @@ class Settings:
             now = time.time()
             if now - last_update > update_frequency:
                 last_update = now
-                self.scan_progress = f'{filecount} / {files_scanned}'
+                self.scan_progress = f'{filecount} / {files_scanned} / {files_added}'
                 self.update_state()
             for filename in filenames:
                 files_scanned += 1
@@ -502,19 +503,19 @@ class Settings:
                     metadata = song_utils.get_metadata(path)
                 except (ValueError, MutagenError):
                     # the given file could not be parsed and will not be added to the database
-                    print(f'skipping {path}')
                     pass
                 else:
-                    print(f'creating {path}')
                     library_relative_path = path[len(library_path)+1:]
                     external_url = os.path.join('local_library', library_relative_path)
-                    ArchivedSong.objects.get_or_create(url=external_url,
-                                                       artist=metadata['artist'],
-                                                       title=metadata['title'],
-                                                       counter=0)
+                    if not ArchivedSong.objects.filter(url=external_url).exists():
+                        files_added += 1
+                        ArchivedSong.objects.create(url=external_url,
+                                                    artist=metadata['artist'],
+                                                    title=metadata['title'],
+                                                    counter=0)
 
         assert files_scanned == filecount
-        self.scan_progress = f'{filecount} / {files_scanned}'
+        self.scan_progress = f'{filecount} / {files_scanned} / {files_added}'
         self.update_state()
 
         self.base.logger.info(f'done scanning in {library_path}')

@@ -555,11 +555,11 @@ class Settings:
             # unfortunately there is no way to access track numbers accross different file types
             # so we have to add songs to playlists alphabetically
             for filename in sorted(filenames):
-                files_processed += 1
                 path = os.path.join(dirpath, filename)
                 library_relative_path = path[len(library_path) + 1:]
                 external_url = os.path.join('local_library', library_relative_path)
                 if ArchivedSong.objects.filter(url=external_url).exists():
+                    files_processed += 1
                     song_urls.append(external_url)
 
             if not song_urls:
@@ -572,7 +572,6 @@ class Settings:
                                                                        counter=0)
             if not created:
                 # this playlist already exists, skip
-                files_processed += len(filenames)
                 continue
 
             song_index = 0

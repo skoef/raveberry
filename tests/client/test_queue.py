@@ -112,3 +112,14 @@ class QueueVotingTests(ConnectionHandlerMixin, MusicTestMixin, TestCase):
         self.client.post(reverse('vote_down_song'), {'key': str(key2)})
         self.client.post(reverse('vote_down_song'), {'key': str(key1)})
         self._poll_musiq_state(lambda state: [song['id'] for song in state['song_queue']] == [key3, key1, key2], timeout=1)
+
+    def test_vote_remove(self):
+        state = json.loads(self.client.get(reverse('musiq_state')).content)
+        # key1 -> key2 -> key3
+        key1 = state['song_queue'][0]['id']
+        key2 = state['song_queue'][1]['id']
+        key3 = state['song_queue'][2]['id']
+
+        for _ in range(3):
+            self.client.post(reverse('vote_down_song'), {'key': str(key2)})
+        self._poll_musiq_state(lambda state: [song['id'] for song in state['song_queue']] == [key1, key3], timeout=1)

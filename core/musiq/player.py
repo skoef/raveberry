@@ -432,7 +432,7 @@ class Player:
         if removed is not None:
             self.queue_semaphore.acquire(blocking=False)
             if not removed.manually_requested:
-                self._handle_autoplay(removed.url)
+                self._handle_autoplay(removed.external_url)
             else:
                 self._handle_autoplay()
 

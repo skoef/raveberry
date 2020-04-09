@@ -10,18 +10,15 @@ from django.test import Client
 import json
 import time
 
-from mopidyapi import MopidyAPI
-
-from core.models import Setting
+from tests.mixins import ConnectionHandlerMixin
 
 
-class YoutubeTests(TransactionTestCase):
+class YoutubeTests(ConnectionHandlerMixin, TransactionTestCase):
 
     def setUp(self):
-        self.client = Client()
-
-        # create a superuser
         User.objects.create_superuser('admin', '', 'admin')
+
+        self.client = Client()
 
         # reduce number of downloaded songs for the test
         self.client.login(username='admin', password='admin')
@@ -35,12 +32,17 @@ class YoutubeTests(TransactionTestCase):
                     os.remove(member_path)
 
     def tearDown(self):
+        self.client.login(username='admin', password='admin')
+
         # restore player state
         self.client.post(reverse('set_autoplay'), {'value': 'false'})
+        self._poll_musiq_state(lambda state: not state['autoplay'])
 
         # ensure that the player is not waiting for a song to finish
         self.client.post(reverse('remove_all'))
+        self._poll_musiq_state(lambda state: len(state['song_queue']) == 0)
         self.client.post(reverse('skip_song'))
+        self._poll_musiq_state(lambda state: not state['current_song'])
 
     def _poll_musiq_state(self, break_condition, timeout=10):
         timeout *= 10
@@ -89,11 +91,12 @@ class YoutubeTests(TransactionTestCase):
         self._poll_current_song()
         self.client.post(reverse('set_autoplay'), {'value': 'true'})
         # make sure a song was downloaded into the queue
-        self._poll_musiq_state(lambda state: len(state['song_queue']) == 1 and state['song_queue'][0]['confirmed'])
+        state = self._poll_musiq_state(lambda state: len(state['song_queue']) == 1 and state['song_queue'][0]['confirmed'])
+        old_id = state['song_queue'][0]['id']
 
         self.client.post(reverse('skip_song'))
         # make sure another song is enqueued
-        self._poll_musiq_state(lambda state: len(state['song_queue']) == 1 and state['song_queue'][0]['confirmed'])
+        self._poll_musiq_state(lambda state: len(state['song_queue']) == 1 and state['song_queue'][0]['confirmed'] and state['song_queue'][0]['id'] != old_id)
 
     def test_radio(self):
         self.client.post(reverse('request_music'), {'query': 'https://www.youtube.com/watch?v=w8KQmps-Sog', 'playlist': 'false', 'platform': 'youtube'})

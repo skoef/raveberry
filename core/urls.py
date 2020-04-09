@@ -53,6 +53,8 @@ else:
                 path('reorder/', base.musiq.player.reorder, name='reorder_song'),
                 path('vote_up/', base.musiq.player.vote_up, name='vote_up_song'),
                 path('vote_down/', base.musiq.player.vote_down, name='vote_down_song'),
+
+                path('stop_loop/', base.musiq.player.stop_loop, name='stop_player_loop'),
             ])),
             path('lights/', include([
                 path('state/', base.lights.get_state, name='lights_state'),

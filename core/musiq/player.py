@@ -13,7 +13,6 @@ import core.musiq.song_utils as song_utils
 from threading import Semaphore
 from threading import Lock
 from threading import Event
-from threading import Thread
 from datetime import datetime
 from functools import wraps
 from contextlib import contextmanager
@@ -28,6 +27,7 @@ from mopidyapi import MopidyAPI
 from mopidyapi.exceptions import MopidyError
 
 from core.musiq.music_provider import SongProvider
+from core.util import background_thread
 
 
 class Player:
@@ -57,7 +57,7 @@ class Player:
             self.volume = self.player.mixer.get_volume() / 100
 
     def start(self):
-        Thread(target=self._loop, daemon=True).start()
+        self._loop()
 
     def progress(self):
         # the state is either pause or stop
@@ -79,6 +79,7 @@ class Player:
                 paused = self.player.playback.get_state() != mopidy.core.PlaybackState.PLAYING
         return paused
 
+    @background_thread
     def _loop(self):
         while True:
 

@@ -2,12 +2,13 @@ from django.contrib.auth.models import User
 from django.test import Client
 from django.urls import reverse
 
+from tests import util
+
 
 class ConnectionHandlerMixin:
     @classmethod
     def tearDownClass(cls):
-        User.objects.create_superuser('admin', '', 'admin')
-
         client = Client()
-        client.login(username='admin', password='admin')
+        util.admin_login(client)
+
         client.post(reverse('stop_player_loop'))

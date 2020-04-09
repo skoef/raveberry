@@ -10,18 +10,17 @@ from django.test import Client
 import json
 import time
 
+from tests import util
 from tests.mixins import ConnectionHandlerMixin
 
 
 class YoutubeTests(ConnectionHandlerMixin, TransactionTestCase):
 
     def setUp(self):
-        User.objects.create_superuser('admin', '', 'admin')
-
         self.client = Client()
+        util.admin_login(self.client)
 
         # reduce number of downloaded songs for the test
-        self.client.login(username='admin', password='admin')
         self.client.post(reverse('set_max_playlist_items'), {'value': '5'})
 
         # clear test cache; ensure that it's the test directory

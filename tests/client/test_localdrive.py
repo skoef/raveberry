@@ -21,7 +21,7 @@ class LocaldriveTests(ConnectionHandlerMixin, MusicTestMixin, TransactionTestCas
     def test_suggested_song(self):
         suggestion = json.loads(self.client.get(reverse('suggestions'), {'term': 'sk8board', 'playlist': 'false'}).content)[0]
         self.client.post(reverse('request_music'), {'key': suggestion['key'], 'query': '', 'playlist': 'false', 'platform': 'local'})
-        state = self._poll_musiq_state(lambda state: state['current_song'], timeout=1)
+        state = self._poll_musiq_state(lambda state: state['current_song'])
         current_song = state['current_song']
         self.assertEqual(current_song['external_url'], 'local_library/Techno/Sk8board.mp3')
         self.assertEqual(current_song['artist'], 'AUDIONAUTIX.COM')
@@ -34,3 +34,24 @@ class LocaldriveTests(ConnectionHandlerMixin, MusicTestMixin, TransactionTestCas
         self.assertEqual(state['song_queue'][0]['external_url'], 'local_library/Hard Rock/HeavyAction.mp3')
         self.assertEqual(state['song_queue'][1]['external_url'], 'local_library/Hard Rock/HiFiBrutality.mp3')
         self.assertEqual(state['song_queue'][2]['external_url'], 'local_library/Hard Rock/LongLiveDeath.mp3')
+
+    def test_autoplay(self):
+        suggestion = json.loads(self.client.get(reverse('suggestions'), {'term': 'checks', 'playlist': 'false'}).content)[0]
+        self.client.post(reverse('request_music'), {'key': suggestion['key'], 'query': '', 'playlist': 'false', 'platform': 'local'})
+        self._poll_current_song()
+        self.client.post(reverse('set_autoplay'), {'value': 'true'})
+        # make sure a song was downloaded into the queue
+        state = self._poll_musiq_state(lambda state: len(state['song_queue']) == 1 and state['song_queue'][0]['confirmed'])
+        old_id = state['song_queue'][0]['id']
+
+        self.client.post(reverse('skip_song'))
+        # make sure another song is enqueued
+        self._poll_musiq_state(lambda state: len(state['song_queue']) == 1 and state['song_queue'][0]['confirmed'] and state['song_queue'][0]['id'] != old_id)
+
+    def test_radio(self):
+        suggestion = json.loads(self.client.get(reverse('suggestions'), {'term': 'checks', 'playlist': 'false'}).content)[0]
+        self.client.post(reverse('request_music'), {'key': suggestion['key'], 'query': '', 'playlist': 'false', 'platform': 'local'})
+        self._poll_current_song()
+        self.client.post(reverse('request_radio'))
+        # ensure that the 4 songs of the album are enqueued
+        self._poll_musiq_state(lambda state: len(state['song_queue']) == 4 and all(song['confirmed'] for song in state['song_queue']), timeout=3)

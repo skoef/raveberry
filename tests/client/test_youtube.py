@@ -11,17 +11,13 @@ import json
 import time
 
 from tests import util
-from tests.mixins import ConnectionHandlerMixin
+from tests.mixins import ConnectionHandlerMixin, MusicTestMixin
 
 
-class YoutubeTests(ConnectionHandlerMixin, TransactionTestCase):
+class YoutubeTests(ConnectionHandlerMixin, MusicTestMixin, TransactionTestCase):
 
     def setUp(self):
-        self.client = Client()
-        util.admin_login(self.client)
-
-        # reduce number of downloaded songs for the test
-        self.client.post(reverse('set_max_playlist_items'), {'value': '5'})
+        super().setUp()
 
         # clear test cache; ensure that it's the test directory
         if os.path.split(os.path.dirname(settings.SONGS_CACHE_DIR))[1] == 'test_cache':
@@ -29,37 +25,6 @@ class YoutubeTests(ConnectionHandlerMixin, TransactionTestCase):
                 member_path = os.path.join(settings.SONGS_CACHE_DIR, member)
                 if os.path.isfile(member_path):
                     os.remove(member_path)
-
-    def tearDown(self):
-        self.client.login(username='admin', password='admin')
-
-        # restore player state
-        self.client.post(reverse('set_autoplay'), {'value': 'false'})
-        self._poll_musiq_state(lambda state: not state['autoplay'])
-
-        # ensure that the player is not waiting for a song to finish
-        self.client.post(reverse('remove_all'))
-        self._poll_musiq_state(lambda state: len(state['song_queue']) == 0)
-        self.client.post(reverse('skip_song'))
-        self._poll_musiq_state(lambda state: not state['current_song'])
-
-    def _poll_musiq_state(self, break_condition, timeout=10):
-        timeout *= 10
-        counter = 0
-        while counter < timeout:
-            state = json.loads(self.client.get(reverse('musiq_state')).content)
-            if break_condition(state):
-                break
-            time.sleep(0.1)
-            counter += 1
-        else:
-            self.fail('enqueue timeout')
-        return state
-
-    def _poll_current_song(self):
-        state = self._poll_musiq_state(lambda state: state['current_song'])
-        current_song = state['current_song']
-        return current_song
 
     def test_query(self):
         self.client.post(reverse('request_music'), {'query': 'Eskimo Callboy MC Thunder', 'playlist': 'false', 'platform': 'youtube'})

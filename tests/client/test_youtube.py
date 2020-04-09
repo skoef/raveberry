@@ -36,31 +36,39 @@ class YoutubeTests(ConnectionHandlerMixin, MusicTestMixin, TransactionTestCase):
 
     def test_url(self):
         self.client.post(reverse('request_music'), {'query': 'https://www.youtube.com/watch?v=UNaYpBpRJOY', 'playlist': 'false', 'platform': 'youtube'})
-        state = self._poll_musiq_state(lambda state: state['current_song'])
-        current_song = state['current_song']
+        current_song = self._poll_current_song()
         self.assertEqual(current_song['external_url'], 'https://www.youtube.com/watch?v=UNaYpBpRJOY')
         self.assertEqual(current_song['artist'], 'Bring Me the Horizon')
         self.assertEqual(current_song['title'], 'Avalanche')
         self.assertEqual(current_song['duration'], 275)
 
-    def test_playlist(self):
+    def test_playlist_url(self):
         self.client.post(reverse('request_music'), {'query': 'https://www.youtube.com/playlist?list=PLiS9Gj9LFFFxFrsk9vKmMWAd4TCrOgYd3', 'playlist': 'true', 'platform': 'youtube'})
         state = self._poll_musiq_state(lambda state: len(state['song_queue']) == 2 and all(song['confirmed'] for song in state['song_queue']), timeout=60)
         self.assertEqual(state['current_song']['external_url'], 'https://www.youtube.com/watch?v=LGamaKv0zNg')
         self.assertEqual(state['song_queue'][0]['external_url'], 'https://www.youtube.com/watch?v=eiCimeZi3-g')
         self.assertEqual(state['song_queue'][1]['external_url'], 'https://www.youtube.com/watch?v=CaY36kVk-cU')
 
+    def test_playlist_query(self):
+        self.client.post(reverse('request_music'), {'query': 'Muse Resistance Album', 'playlist': 'true', 'platform': 'youtube'})
+        state = self._poll_musiq_state(lambda state: len(state['song_queue']) == 4 and all(song['confirmed'] for song in state['song_queue']), timeout=60)
+        self.assertEqual(state['current_song']['external_url'], 'https://www.youtube.com/watch?v=d0KWiDGi_ek')
+        self.assertEqual(state['song_queue'][0]['external_url'], 'https://www.youtube.com/watch?v=jcfcZfgyzm8')
+        self.assertEqual(state['song_queue'][1]['external_url'], 'https://www.youtube.com/watch?v=47P6CI7V8gM')
+        self.assertEqual(state['song_queue'][2]['external_url'], 'https://www.youtube.com/watch?v=-5-K51jHQ6k')
+        self.assertEqual(state['song_queue'][3]['external_url'], 'https://www.youtube.com/watch?v=ZsbwAGZHybA')
+
     def test_autoplay(self):
         self.client.post(reverse('request_music'), {'query': 'https://www.youtube.com/watch?v=w8KQmps-Sog', 'playlist': 'false', 'platform': 'youtube'})
         self._poll_current_song()
         self.client.post(reverse('set_autoplay'), {'value': 'true'})
         # make sure a song was downloaded into the queue
-        state = self._poll_musiq_state(lambda state: len(state['song_queue']) == 1 and state['song_queue'][0]['confirmed'])
+        state = self._poll_musiq_state(lambda state: len(state['song_queue']) == 1 and state['song_queue'][0]['confirmed'], timeout=10)
         old_id = state['song_queue'][0]['id']
 
         self.client.post(reverse('skip_song'))
         # make sure another song is enqueued
-        self._poll_musiq_state(lambda state: len(state['song_queue']) == 1 and state['song_queue'][0]['confirmed'] and state['song_queue'][0]['id'] != old_id)
+        self._poll_musiq_state(lambda state: len(state['song_queue']) == 1 and state['song_queue'][0]['confirmed'] and state['song_queue'][0]['id'] != old_id, timeout=10)
 
     def test_radio(self):
         self.client.post(reverse('request_music'), {'query': 'https://www.youtube.com/watch?v=w8KQmps-Sog', 'playlist': 'false', 'platform': 'youtube'})

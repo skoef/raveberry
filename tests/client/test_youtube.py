@@ -71,13 +71,13 @@ class YoutubeTests(ConnectionHandlerMixin, TransactionTestCase):
         self.assertEqual(current_song['duration'], 267)
 
     def test_url(self):
-        self.client.post(reverse('request_music'), {'query': 'https://www.youtube.com/watch?v=B0m5fxiN38Y', 'playlist': 'false', 'platform': 'youtube'})
+        self.client.post(reverse('request_music'), {'query': 'https://www.youtube.com/watch?v=UNaYpBpRJOY', 'playlist': 'false', 'platform': 'youtube'})
         state = self._poll_musiq_state(lambda state: state['current_song'])
         current_song = state['current_song']
-        self.assertEqual(current_song['external_url'], 'https://www.youtube.com/watch?v=B0m5fxiN38Y')
-        self.assertEqual(current_song['artist'], 'Martin Garrix, Jay Hardway')
-        self.assertEqual(current_song['title'], 'Spotless (Extended)')
-        self.assertEqual(current_song['duration'], 195)
+        self.assertEqual(current_song['external_url'], 'https://www.youtube.com/watch?v=UNaYpBpRJOY')
+        self.assertEqual(current_song['artist'], 'Bring Me the Horizon')
+        self.assertEqual(current_song['title'], 'Avalanche')
+        self.assertEqual(current_song['duration'], 275)
 
     def test_playlist(self):
         self.client.post(reverse('request_music'), {'query': 'https://www.youtube.com/playlist?list=PLiS9Gj9LFFFxFrsk9vKmMWAd4TCrOgYd3', 'playlist': 'true', 'platform': 'youtube'})

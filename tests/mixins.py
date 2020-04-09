@@ -1,6 +1,8 @@
 import json
+import os
 import time
 
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.test import Client
 from django.urls import reverse
@@ -45,6 +47,16 @@ class MusicTestMixin:
         self.client.post(reverse('skip_song'))
         self._poll_musiq_state(lambda state: not state['current_song'])
 
+    def _setup_test_library(self):
+        util.download_test_library()
+
+        test_library = os.path.join(settings.BASE_DIR, 'test_library')
+        self.client.post(reverse('scan_library'), {'library_path': test_library})
+        # need to split the scan_progress as it contains no-break spaces
+        self._poll_state('settings_state', lambda state: ' '.join(state['scan_progress'].split()) == '6 / 6 / 6')
+        self.client.post(reverse('create_playlists'))
+        self._poll_state('settings_state', lambda state: ' '.join(state['scan_progress'].split()) == '6 / 6 / 6')
+
     def _poll_state(self, state_url, break_condition, timeout=10):
         timeout *= 10
         counter = 0
@@ -66,3 +78,8 @@ class MusicTestMixin:
         current_song = state['current_song']
         return current_song
 
+    def _add_local_playlist(self):
+        suggestion = json.loads(self.client.get(reverse('suggestions'), {'term': 'hard rock', 'playlist': 'true'}).content)[0]
+        self.client.post(reverse('request_music'), {'key': suggestion['key'], 'query': '', 'playlist': 'true', 'platform': 'local'})
+        state = self._poll_musiq_state(lambda state: len(state['song_queue']) == 3 and all(song['confirmed'] for song in state['song_queue']))
+        return state

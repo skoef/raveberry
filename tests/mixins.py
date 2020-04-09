@@ -53,11 +53,11 @@ class MusicTestMixin:
         test_library = os.path.join(settings.BASE_DIR, 'test_library')
         self.client.post(reverse('scan_library'), {'library_path': test_library})
         # need to split the scan_progress as it contains no-break spaces
-        self._poll_state('settings_state', lambda state: ' '.join(state['scan_progress'].split()) == '6 / 6 / 6')
+        self._poll_state('settings_state', lambda state: ' '.join(state['scan_progress'].split()).startswith('6 / 6 / '))
         self.client.post(reverse('create_playlists'))
-        self._poll_state('settings_state', lambda state: ' '.join(state['scan_progress'].split()) == '6 / 6 / 6')
+        self._poll_state('settings_state', lambda state: ' '.join(state['scan_progress'].split()).startswith('6 / 6 / '))
 
-    def _poll_state(self, state_url, break_condition, timeout=10):
+    def _poll_state(self, state_url, break_condition, timeout=1):
         timeout *= 10
         counter = 0
         while counter < timeout:
@@ -67,19 +67,19 @@ class MusicTestMixin:
             time.sleep(0.1)
             counter += 1
         else:
-            self.fail('enqueue timeout')
+            self.fail(f'enqueue timeout. state: {state}')
         return state
 
-    def _poll_musiq_state(self, break_condition, timeout=10):
+    def _poll_musiq_state(self, break_condition, timeout=1):
         return self._poll_state('musiq_state', break_condition, timeout=timeout)
 
     def _poll_current_song(self):
-        state = self._poll_musiq_state(lambda state: state['current_song'])
+        state = self._poll_musiq_state(lambda state: state['current_song'], timeout=10)
         current_song = state['current_song']
         return current_song
 
     def _add_local_playlist(self):
         suggestion = json.loads(self.client.get(reverse('suggestions'), {'term': 'hard rock', 'playlist': 'true'}).content)[0]
         self.client.post(reverse('request_music'), {'key': suggestion['key'], 'query': '', 'playlist': 'true', 'platform': 'local'})
-        state = self._poll_musiq_state(lambda state: len(state['song_queue']) == 3 and all(song['confirmed'] for song in state['song_queue']))
+        state = self._poll_musiq_state(lambda state: len(state['song_queue']) == 3 and all(song['confirmed'] for song in state['song_queue']), timeout=3)
         return state

@@ -10,6 +10,7 @@ from django.db import models
 from django.conf import settings
 from mutagen import MutagenError
 
+from core.util import background_thread
 from main import settings
 from core.models import Setting, ArchivedSong, ArchivedPlaylist, PlaylistEntry
 from core.models import PlayLog
@@ -322,12 +323,12 @@ class Settings:
         error = ''
 
         # A Function that acts as a timeout for unexpected errors (or timeouts)
+        @background_thread
         def timeout():
             time.sleep(20)
             error = 'Timed out'
             if self.bluetoothctl is not None:
                 self._stop_bluetoothctl()
-        threading.Thread(target=timeout, daemon=True).start()
 
         self.bluetoothctl.stdin.write(b'pair ' + address.encode() + b'\n')
         self.bluetoothctl.stdin.flush()
@@ -451,9 +452,10 @@ class Settings:
             return HttpResponseBadRequest('not a directory')
         library_path = os.path.abspath(library_path)
 
-        threading.Thread(target=self._scan_library, args=(library_path,), daemon=True).start()
+        self._scan_library(library_path)
 
         return HttpResponse(f'started scanning in {library_path}. This could take a while')
+    @background_thread
     def _scan_library(self, library_path):
         self.scan_progress = '0 / 0 / 0'
         self.update_state()
@@ -525,9 +527,10 @@ class Settings:
         if not os.path.islink(library_link):
             return HttpResponseBadRequest('No library set')
 
-        threading.Thread(target=self._create_playlists, daemon=True).start()
+        self._create_playlists()
 
         return HttpResponse(f'started creating playlsts. This could take a while')
+    @background_thread
     def _create_playlists(self):
         local_files = ArchivedSong.objects.filter(url__startswith='local_library').count()
 

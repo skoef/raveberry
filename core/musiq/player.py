@@ -43,6 +43,7 @@ class Player:
         self.queue = models.QueuedSong.objects
         Player.queue_semaphore = Semaphore(self.queue.count())
         self.alarm_playing = Event()
+        self.deactivate = False
 
         self.player = MopidyAPI()
         self.player_lock = Lock()
@@ -96,6 +97,8 @@ class Player:
                     catch_up = -1
             else:
                 self.queue_semaphore.acquire()
+                if self.deactivate:
+                    break
 
                 # select the next song depending on settings
                 if self.musiq.base.settings.voting_system:
@@ -432,3 +435,10 @@ class Player:
                 self._handle_autoplay(removed.url)
             else:
                 self._handle_autoplay()
+    @control
+    def stop_loop(self, request):
+        if not self.musiq.base.user_manager.is_admin(request.user):
+            return HttpResponseForbidden()
+        # stop the main loop, only used for tests
+        self.deactivate = True
+        self.queue_semaphore.release()

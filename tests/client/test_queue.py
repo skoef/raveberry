@@ -130,8 +130,6 @@ class QueueVotingTests(ConnectionHandlerMixin, MusicTestMixin, TransactionTestCa
         # key1 -> key2 -> key3
         key = state['current_song']['queue_key']
 
-        print(f'voting down {key}')
         for _ in range(3):
             self.client.post(reverse('vote_down_song'), {'key': str(key)})
         self._poll_musiq_state(lambda state: len(state['song_queue']) == 2)
-        print(f'voted down {key}')

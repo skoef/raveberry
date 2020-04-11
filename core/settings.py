@@ -316,7 +316,7 @@ class Settings:
         address = request.POST.get('address')
         if self.bluetoothctl is not None:
             return HttpResponseBadRequest('Stop scanning before connecting')
-        if address is None or address is '':
+        if address is None or address == '':
             return HttpResponseBadRequest('No device selected')
 
         self.bluetoothctl = subprocess.Popen(["bluetoothctl"], stdin=subprocess.PIPE, stdout=subprocess.PIPE)

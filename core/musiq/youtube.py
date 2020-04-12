@@ -254,12 +254,22 @@ class YoutubePlaylistProvider(PlaylistProvider):
             pickle.dump(session.cookies, f)
 
         initial_data = get_initial_data(r.text)
-        search_results = \
+        section_renderers = \
             initial_data['contents']['twoColumnSearchResultsRenderer']['primaryContents'][
-                'sectionListRenderer']['contents'][0]['itemSectionRenderer']['contents']
+                'sectionListRenderer']['contents']
 
-        list_id = next(res['playlistRenderer']['playlistId'] for res in search_results if
-                       'playlistRenderer' in res)
+        list_id = None
+        for section_renderer in section_renderers:
+            search_results = section_renderer['itemSectionRenderer']['contents']
+
+            try:
+                list_id = next(res['playlistRenderer']['playlistId'] for res in search_results if
+                               'playlistRenderer' in res)
+                break
+            except StopIteration:
+                # the search result did not contain the list id
+                pass
+
         return list_id
 
     def fetch_metadata(self):

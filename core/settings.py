@@ -452,14 +452,14 @@ class Settings:
             return HttpResponseBadRequest('not a directory')
         library_path = os.path.abspath(library_path)
 
+        self.scan_progress = '0 / 0 / 0'
+        self.update_state()
+
         self._scan_library(library_path)
 
         return HttpResponse(f'started scanning in {library_path}. This could take a while')
     @background_thread
     def _scan_library(self, library_path):
-        self.scan_progress = '0 / 0 / 0'
-        self.update_state()
-
         scan_start = time.time()
         last_update = scan_start
         update_frequency = 0.5
@@ -527,6 +527,9 @@ class Settings:
         if not os.path.islink(library_link):
             return HttpResponseBadRequest('No library set')
 
+        self.scan_progress = f'0 / 0 / 0'
+        self.update_state()
+
         self._create_playlists()
 
         return HttpResponse(f'started creating playlsts. This could take a while')
@@ -586,6 +589,7 @@ class Settings:
                 )
                 files_added += 1
                 song_index += 1
+
         self.scan_progress = f'{local_files} / {files_processed} / {files_added}'
         self.update_state()
 

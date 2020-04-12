@@ -7,6 +7,7 @@ from django.contrib.auth.models import User
 from django.test import Client
 from django.urls import reverse
 
+from core.models import ArchivedPlaylist
 from tests import util
 
 
@@ -79,7 +80,7 @@ class MusicTestMixin:
         return current_song
 
     def _add_local_playlist(self):
-        suggestion = json.loads(self.client.get(reverse('suggestions'), {'term': 'hard rock', 'playlist': 'true'}).content)[0]
-        self.client.post(reverse('request_music'), {'key': suggestion['key'], 'query': '', 'playlist': 'true', 'platform': 'local'})
+        key = ArchivedPlaylist.objects.filter(title='Hard Rock').get().id
+        self.client.post(reverse('request_music'), {'key': key, 'query': '', 'playlist': 'true', 'platform': 'local'})
         state = self._poll_musiq_state(lambda state: len(state['song_queue']) == 3 and all(song['confirmed'] for song in state['song_queue']), timeout=3)
         return state

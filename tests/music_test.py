@@ -2,31 +2,18 @@ import json
 import os
 import time
 
+import django
 from django.conf import settings
 from django.contrib.auth.models import User
-from django.test import Client
+from django.test import Client, TestCase, TransactionTestCase
 from django.urls import reverse
 
-from core.models import ArchivedPlaylist
 from tests import util
 
+from core.models import ArchivedSong, ArchivedPlaylist, CurrentSong, QueuedSong
 
-class ConnectionHandlerMixin:
-    @classmethod
-    def setUpClass(cls):
-        client = Client()
-        util.admin_login(client)
 
-        client.post(reverse('start_player_loop'))
-        
-    @classmethod
-    def tearDownClass(cls):
-        client = Client()
-        util.admin_login(client)
-
-        client.post(reverse('stop_player_loop'))
-
-class MusicTestMixin:
+class MusicTest(TransactionTestCase):
 
     def setUp(self):
         self.client = Client()
@@ -34,6 +21,8 @@ class MusicTestMixin:
 
         # reduce number of downloaded songs for the test
         self.client.post(reverse('set_max_playlist_items'), {'value': '5'})
+
+        self.client.post(reverse('start_player_loop'))
 
     def tearDown(self):
         self.client.login(username='admin', password='admin')
@@ -47,6 +36,8 @@ class MusicTestMixin:
         self._poll_musiq_state(lambda state: len(state['song_queue']) == 0)
         self.client.post(reverse('skip_song'))
         self._poll_musiq_state(lambda state: not state['current_song'])
+
+        self.client.post(reverse('stop_player_loop'))
 
     def _setup_test_library(self):
         util.download_test_library()
@@ -80,7 +71,7 @@ class MusicTestMixin:
         return current_song
 
     def _add_local_playlist(self):
-        key = ArchivedPlaylist.objects.filter(title='Hard Rock').get().id
-        self.client.post(reverse('request_music'), {'key': key, 'query': '', 'playlist': 'true', 'platform': 'local'})
+        suggestion = json.loads(self.client.get(reverse('suggestions'), {'term': 'hard rock', 'playlist': 'true'}).content)[0]
+        self.client.post(reverse('request_music'), {'key': suggestion['key'], 'query': '', 'playlist': 'true', 'platform': 'local'})
         state = self._poll_musiq_state(lambda state: len(state['song_queue']) == 3 and all(song['confirmed'] for song in state['song_queue']), timeout=3)
         return state

@@ -52,10 +52,10 @@ class SimpleMiddleware:
     def __call__(self, request):
         # Code to be executed for each request before
         # the view (and later middleware) are called.
-        ip, is_routable = ipware.get_client_ip(request)
-        if ip is None:
-            ip = ""
-        UserManager.last_requests[ip] = timezone.now()
+        request_ip, is_routable = ipware.get_client_ip(request)
+        if request_ip is None:
+            request_ip = ""
+        UserManager.last_requests[request_ip] = timezone.now()
 
         response = self.get_response(request)
 

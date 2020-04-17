@@ -14,3 +14,14 @@ def background_thread(function):
         return t
 
     return decorator
+
+
+class Stateful:
+    def state_dict(self):
+        raise NotImplementedError()
+
+    def get_state(self, request):
+        raise NotImplementedError()
+
+    def update_state(self):
+        raise NotImplementedError()

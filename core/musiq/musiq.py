@@ -6,12 +6,10 @@ import ipware
 from django.forms.models import model_to_dict
 from django.http import HttpResponse
 from django.http import HttpResponseBadRequest
-from django.http import JsonResponse
 from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 
 import core.musiq.song_utils as song_utils
-import core.state_handler as state_handler
 from core.models import CurrentSong
 from core.models import QueuedSong
 from core.musiq.localdrive import LocalSongProvider
@@ -23,7 +21,7 @@ from core.musiq.youtube import (
     YoutubeSongProvider,
     YoutubePlaylistProvider,
 )
-from core.util import Stateful
+from core.state_handler import Stateful
 
 
 class Musiq(Stateful):
@@ -224,10 +222,3 @@ class Musiq(Stateful):
         state_dict["volume"] = self.player.volume
         state_dict["song_queue"] = song_queue
         return state_dict
-
-    def get_state(self, request):
-        state = self.state_dict()
-        return JsonResponse(state)
-
-    def update_state(self):
-        state_handler.update_state(self.state_dict())

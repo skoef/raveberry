@@ -1,5 +1,7 @@
 """This module contains all Spotify related code."""
 
+from __future__ import annotations
+
 from urllib.parse import urlparse
 
 from django.http import HttpResponse
@@ -8,6 +10,8 @@ from mopidy_spotify.web import OAuthClient
 from core.models import Setting
 from core.musiq import song_utils
 from core.musiq.music_provider import SongProvider, PlaylistProvider
+from django.http.response import HttpResponse
+from typing import Dict, Optional, Union, List, Tuple
 
 
 class Spotify:
@@ -16,7 +20,7 @@ class Spotify:
     _web_client = None
 
     @property
-    def web_client(self):
+    def web_client(self) -> OAuthClient:
         """Returns the web client if it was already created.
         If not, it is created using the spotify credentials from the database."""
         if Spotify._web_client is None:
@@ -30,7 +34,9 @@ class Spotify:
             )
         return Spotify._web_client
 
-    def get_search_suggestions(self, query, playlist):
+    def get_search_suggestions(
+        self, query: str, playlist: bool
+    ) -> List[Tuple[str, str]]:
         """Returns a list of suggested items for the given query.
         Returns playlists if :param playlist: is True, songs otherwise."""
         result = self.web_client.get(
@@ -74,15 +80,17 @@ class SpotifySongProvider(SongProvider, Spotify):
     """This class handles songs from Spotify."""
 
     @staticmethod
-    def get_id_from_external_url(url):
+    def get_id_from_external_url(url: str) -> str:
         return urlparse(url).path.split("/")[-1]
 
     @staticmethod
-    def get_id_from_internal_url(url):
+    def get_id_from_internal_url(url: str) -> str:
         """Constructs and returns the internal id based on the given url."""
         return url.split(":")[-1]
 
-    def __init__(self, musiq, query, key):
+    def __init__(
+        self, musiq: "Musiq", query: Optional[str], key: Optional[int]
+    ) -> None:
         super().__init__(musiq, query, key)
 
         if query and query.startswith("https://www.youtube.com/watch?v="):
@@ -92,7 +100,7 @@ class SpotifySongProvider(SongProvider, Spotify):
         self.spotify_library = musiq.player.player.library
         self.metadata = dict()
 
-    def check_cached(self):
+    def check_cached(self) -> bool:
         if self.query is not None and self.query.startswith(
             "https://open.spotify.com/"
         ):
@@ -105,7 +113,7 @@ class SpotifySongProvider(SongProvider, Spotify):
         # Spotify songs cannot be cached and have to be streamed everytime
         return False
 
-    def check_downloadable(self):
+    def check_downloadable(self) -> bool:
         if self.id is None:
             results = self.spotify_library.search({"any": [self.query]})
 
@@ -122,13 +130,17 @@ class SpotifySongProvider(SongProvider, Spotify):
         return True
 
     def download(
-        self, request_ip, background=True, archive=True, manually_requested=True
-    ):
+        self,
+        request_ip: str,
+        background: bool = True,
+        archive: bool = True,
+        manually_requested: bool = True,
+    ) -> bool:
         self.enqueue(request_ip, archive=archive, manually_requested=manually_requested)
         # spotify need to be streamed, no download possible
         return True
 
-    def gather_metadata(self, track_info=None):
+    def gather_metadata(self, track_info: Optional["Track"] = None) -> None:
         """Fetches metadata for this song's uri from Spotify."""
         if not track_info:
             results = self.spotify_library.search({"uri": [self.get_internal_url()]})
@@ -140,22 +152,22 @@ class SpotifySongProvider(SongProvider, Spotify):
         self.metadata["title"] = track_info.name
         self.metadata["duration"] = track_info.length / 1000
 
-    def get_metadata(self):
+    def get_metadata(self) -> Dict[str, Union[str, float]]:
         if not self.metadata:
             self.gather_metadata()
         return self.metadata
 
-    def _get_path(self):
+    def _get_path(self) -> str:
         # spotify is not cached in the cache directory
-        return None
+        raise NotImplementedError()
 
-    def get_internal_url(self):
+    def get_internal_url(self) -> str:
         return "spotify:track:" + self.id
 
-    def get_external_url(self):
+    def get_external_url(self) -> str:
         return "https://open.spotify.com/track/" + self.id
 
-    def get_suggestion(self):
+    def get_suggestion(self) -> str:
         result = self.web_client.get(
             "recommendations",
             params={"limit": "1", "market": "from_token", "seed_tracks": self.id},
@@ -169,7 +181,7 @@ class SpotifySongProvider(SongProvider, Spotify):
 
         return external_url
 
-    def request_radio(self, request_ip):
+    def request_radio(self, request_ip: str) -> HttpResponse:
         result = self.web_client.get(
             "recommendations",
             params={
@@ -198,16 +210,18 @@ class SpotifyPlaylistProvider(PlaylistProvider, Spotify):
     """This class handles Spotify Playlists."""
 
     @staticmethod
-    def get_id_from_external_url(url):
+    def get_id_from_external_url(url: str) -> Optional[str]:
         if not url.startswith("https://open.spotify.com/playlist/"):
             return None
         return urlparse(url).path.split("/")[-1]
 
-    def __init__(self, musiq, query, key):
+    def __init__(
+        self, musiq: "Musiq", query: Optional[str], key: Optional[int]
+    ) -> None:
         super().__init__(musiq, query, key)
         self.type = "spotify"
 
-    def search_id(self):
+    def search_id(self) -> Optional[str]:
         result = self.web_client.get(
             "search",
             params={
@@ -229,10 +243,10 @@ class SpotifyPlaylistProvider(PlaylistProvider, Spotify):
 
         return list_id
 
-    def is_radio(self):
+    def is_radio(self) -> bool:
         return False
 
-    def fetch_metadata(self):
+    def fetch_metadata(self) -> None:
         if self.title is None:
             result = self.web_client.get(
                 f"playlists/{self.id}", params={"fields": "name", "limit": "50"},

@@ -1,10 +1,13 @@
 """This module contains manages the song queue in the database."""
 
+from __future__ import annotations
+
 from django.db import models
 from django.db import transaction
 from django.db.models import F
 
 import core.models
+from typing import Dict, Optional, Union, Tuple
 
 
 class SongQueue(models.Manager):
@@ -12,7 +15,9 @@ class SongQueue(models.Manager):
     Handles all operations on the queue."""
 
     @transaction.atomic
-    def enqueue(self, metadata, manually_requested):
+    def enqueue(
+        self, metadata: Dict[str, Union[str, float]], manually_requested: bool
+    ) -> "QueuedSong":
         """Creates a new song at the end of the queue and returns it."""
         last = self.last()
         index = 1 if last is None else last.index + 1
@@ -28,7 +33,7 @@ class SongQueue(models.Manager):
         return song
 
     @transaction.atomic
-    def dequeue(self):
+    def dequeue(self) -> Tuple[int, "QueuedSong"]:
         """Removes the first song from the queue and returns its id and the object."""
         first = self.first()
         first_id = first.id
@@ -38,7 +43,7 @@ class SongQueue(models.Manager):
         return first_id, first
 
     @transaction.atomic
-    def prioritize(self, key):
+    def prioritize(self, key: int) -> None:
         """Moves the song specified by :param key: to the front of the queue."""
         to_prioritize = self.get(id=key)
         first = self.first()
@@ -50,7 +55,7 @@ class SongQueue(models.Manager):
         to_prioritize.save()
 
     @transaction.atomic
-    def remove(self, key):
+    def remove(self, key: int) -> "QueuedSong":
         """Removes the song specified by :param key: from the queue and returns it."""
         to_remove = self.get(id=key)
         to_remove.delete()
@@ -59,7 +64,9 @@ class SongQueue(models.Manager):
         return to_remove
 
     @transaction.atomic
-    def reorder(self, new_prev_id, element_id, new_next_id):
+    def reorder(
+        self, new_prev_id: Optional[int], element_id: int, new_next_id: Optional[int]
+    ) -> None:
         """Moves the song specified by :param element_id:
         between the two songs :param new_prev_id: and :param new_next_id:."""
 
@@ -136,12 +143,12 @@ class SongQueue(models.Manager):
         to_reorder.save()
 
     @transaction.atomic
-    def vote_up(self, key):
+    def vote_up(self, key: int) -> None:
         """Increase the vote-count of the song specified by :param key:."""
         self.filter(id=key).update(votes=F("votes") + 1)
 
     @transaction.atomic
-    def vote_down(self, key, threshold):
+    def vote_down(self, key: int, threshold: int) -> Optional["QueuedSong"]:
         """Decrease the vote-count of the song specified by :param key:
         If the song is now below the threshold, remove and return it."""
         self.filter(id=key).update(votes=F("votes") - 1)

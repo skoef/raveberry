@@ -1,5 +1,7 @@
 """This module handles all requests concerning the addition of music to the queue."""
 
+from __future__ import annotations
+
 import logging
 
 import ipware
@@ -22,12 +24,15 @@ from core.musiq.youtube import (
     YoutubePlaylistProvider,
 )
 from core.state_handler import Stateful
+from django.core.handlers.wsgi import WSGIRequest
+from django.http.response import HttpResponse
+from typing import Any, Dict, Optional, Union
 
 
 class Musiq(Stateful):
     """This class provides endpoints for all music related requests."""
 
-    def __init__(self, base):
+    def __init__(self, base: "Base") -> None:
         self.base = base
 
         self.logger = logging.getLogger("raveberry")
@@ -42,14 +47,14 @@ class Musiq(Stateful):
 
     def do_request_music(
         self,
-        request_ip,
-        query,
-        key,
-        playlist,
-        platform,
-        archive=True,
-        manually_requested=True,
-    ):
+        request_ip: str,
+        query: str,
+        key: Optional[int],
+        playlist: bool,
+        platform: str,
+        archive: bool = True,
+        manually_requested: bool = True,
+    ) -> HttpResponse:
         """Performs the actual requesting of the music, not an endpoint.
         Enqueues the requested song or playlist into the queue, using appropriate providers."""
         providers = []
@@ -124,7 +129,7 @@ class Musiq(Stateful):
             message += " (used fallback)"
         return HttpResponse(message)
 
-    def request_music(self, request):
+    def request_music(self, request: WSGIRequest) -> HttpResponse:
         """Endpoint to request music. Calls internal function."""
         key = request.POST.get("key")
         playlist = request.POST.get("playlist") == "true"
@@ -141,7 +146,7 @@ class Musiq(Stateful):
 
         return self.do_request_music(request_ip, query, key, playlist, platform)
 
-    def request_radio(self, request):
+    def request_radio(self, request: WSGIRequest) -> HttpResponse:
         """Endpoint to request radio for the current song."""
         # only get ip on user requests
         if self.base.settings.logging_enabled:
@@ -159,17 +164,17 @@ class Musiq(Stateful):
         return provider.request_radio(request_ip)
 
     @csrf_exempt
-    def post_song(self, request):
+    def post_song(self, request: WSGIRequest) -> HttpResponse:
         """This endpoint is part of the API and exempt from CSRF checks.
         Shareberry uses this endpoint."""
         return self.request_music(request)
 
-    def index(self, request):
+    def index(self, request: WSGIRequest) -> HttpResponse:
         """Renders the /musiq page."""
         context = self.base.context(request)
         return render(request, "musiq.html", context)
 
-    def state_dict(self):
+    def state_dict(self) -> Dict[str, Any]:
         state_dict = self.base.state_dict()
         try:
             current_song = CurrentSong.objects.get()

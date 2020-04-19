@@ -4,6 +4,10 @@
 # pylint: disable=wrong-import-position
 # we need to access non-public pi3d members
 # pylint: disable=protected-access
+from __future__ import annotations
+
+from typing import List
+
 if __name__ == "__main__":
     import sys
 
@@ -39,7 +43,7 @@ class Circle(ScreenProgram):
     # The size of dynamic modifications to the scale
     SCALE_STEP = 0.5
 
-    def __init__(self, lights):
+    def __init__(self, lights: "Lights") -> None:
         super().__init__(lights)
         self.name = "Circular"
         self.cava = lights.cava_program
@@ -88,7 +92,7 @@ class Circle(ScreenProgram):
         # In order to use newer OpenGL versions (e.g. for Instancing), use the following line:
         # glutInitContextVersion( 3, 3 );
 
-    def _set_resolution(self, width, height):
+    def _set_resolution(self, width: int, height: int) -> None:
         self.width, self.height = width, height
         # this scale value determines how many times bigger the actual display is
         # in comparison to the actually computed buffer.
@@ -99,7 +103,7 @@ class Circle(ScreenProgram):
         )
         self.scale = max(self.scale, 1)
 
-    def start(self):
+    def start(self) -> None:
         self.cava.use()
 
         os.environ["DISPLAY"] = ":0"
@@ -128,7 +132,7 @@ class Circle(ScreenProgram):
         self.should_prepare = True
         self.history_toggle = True
 
-    def increase_resolution(self):
+    def increase_resolution(self) -> None:
         if self.scale == 1:
             # do not render more than one pixel per pixel
             return
@@ -144,10 +148,10 @@ class Circle(ScreenProgram):
 
         self.scale = max(1, self.scale - self.SCALE_STEP)
 
-    def decrease_resolution(self):
+    def decrease_resolution(self) -> None:
         self.scale += self.SCALE_STEP
 
-    def _prepare(self):
+    def _prepare(self) -> None:
         self.should_prepare = False
 
         import numpy as np
@@ -334,11 +338,11 @@ class Circle(ScreenProgram):
 
         opengles.glDepthFunc(GL_ALWAYS)
 
-    def _set_unif(self, sprite, uniforms):
+    def _set_unif(self, sprite: "pi3d.Sprite", uniforms: List[int]) -> None:
         for uniform in uniforms:
             sprite.unif[uniform] = self.uniform_values[uniform]
 
-    def draw(self):
+    def draw(self) -> None:
         import numpy as np
         from scipy.ndimage.filters import gaussian_filter
         from pi3d.Camera import Camera
@@ -565,7 +569,7 @@ class Circle(ScreenProgram):
             print(f"scale: {self.scale}")
             print("=====")
 
-    def _initial_particles(self):
+    def _initial_particles(self) -> "np.ndarray":
         """ constructs an array of particles containing x, y and speed value for each particle """
         import numpy as np
 
@@ -583,7 +587,7 @@ class Circle(ScreenProgram):
             particles[index] = [x, y, speed, offset]
         return particles
 
-    def stop(self):
+    def stop(self) -> None:
         # clean up the display. after stopping the main loop has to be called once more
         self.display.stop()
         self.display.loop_running()
@@ -591,7 +595,7 @@ class Circle(ScreenProgram):
         self.cava.release()
 
 
-def main():
+def main() -> None:
     """Runs this visualization without the need of the server running."""
     MockCava = type(
         "obj",

@@ -1,6 +1,8 @@
 """This module contains everything related to the settings and configuration of the server."""
 # pylint: disable=no-self-use  # self is used in decorator
 
+from __future__ import annotations
+
 import configparser
 import math
 import os
@@ -10,10 +12,12 @@ import subprocess
 import time
 from datetime import timedelta
 from functools import wraps
+from typing import Callable, Dict, Any
 
 from dateutil import tz
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
+from django.core.handlers.wsgi import WSGIRequest
 from django.db import models
 from django.http import HttpResponse
 from django.http import HttpResponseBadRequest
@@ -33,14 +37,16 @@ from core.util import background_thread
 
 
 # settings can only be changed by admin
-def option(func):
+def option(
+    func: Callable[["Settings", WSGIRequest], HttpResponse]
+) -> Callable[["Settings", WSGIRequest], HttpResponse]:
     """A decorator that makes sure that only the admin changes a setting."""
 
-    def _decorator(self, request, *args, **kwargs):
+    def _decorator(self: "Settings", request: WSGIRequest) -> HttpResponse:
         # don't allow option changes during alarm
         if request.user.username != "admin":
             return HttpResponseForbidden()
-        response = func(self, request, *args, **kwargs)
+        response = func(self, request)
         self.update_state()
         if response is not None:
             return response
@@ -53,22 +59,22 @@ class Settings(Stateful):
     """This class is responsible for handling requests from the /settings page."""
 
     @staticmethod
-    def get_setting(key, default):
+    def get_setting(key: str, default: str) -> str:
         """This method returns the value for the given :param key:.
         Vaules of non-existing keys are set to :param default:"""
         return Setting.objects.get_or_create(key=key, defaults={"value": default})[
             0
         ].value
 
-    def __init__(self, base):
+    def __init__(self, base: "Base") -> None:
         self.base = base
         self.voting_system = self.get_setting("voting_system", "False") == "True"
         self.logging_enabled = self.get_setting("logging_enabled", "True") == "True"
-        self.people_to_party = int(self.get_setting("people_to_party", 3))
-        self.alarm_probability = float(self.get_setting("alarm_probability", 0))
-        self.downvotes_to_kick = int(self.get_setting("downvotes_to_kick", 3))
-        self.max_download_size = int(self.get_setting("max_download_size", 10))
-        self.max_playlist_items = int(self.get_setting("max_playlist_items", 10))
+        self.people_to_party = int(self.get_setting("people_to_party", "3"))
+        self.alarm_probability = float(self.get_setting("alarm_probability", "0"))
+        self.downvotes_to_kick = int(self.get_setting("downvotes_to_kick", "3"))
+        self.max_download_size = int(self.get_setting("max_download_size", "10"))
+        self.max_playlist_items = int(self.get_setting("max_playlist_items", "10"))
         self.spotify_username = self.get_setting("spotify_username", "")
         self.spotify_password = self.get_setting("spotify_password", "")
         self.spotify_client_id = self.get_setting("spotify_client_id", "")
@@ -82,7 +88,7 @@ class Settings(Stateful):
         self.homewifi = self.get_setting("homewifi", "")
         self.scan_progress = "0 / 0 / 0"
 
-    def state_dict(self):
+    def state_dict(self) -> Dict[str, Any]:
         state_dict = self.base.state_dict()
         state_dict["voting_system"] = self.voting_system
         state_dict["logging_enabled"] = self.logging_enabled
@@ -131,14 +137,14 @@ class Settings(Stateful):
 
         return state_dict
 
-    def index(self, request):
+    def index(self, request: WSGIRequest) -> HttpResponse:
         """Renders the /settings page. Only admin is allowed to see this page."""
         if not self.base.user_manager.is_admin(request.user):
             raise PermissionDenied
         context = self.base.context(request)
         return render(request, "settings.html", context)
 
-    def _check_spotify(self, credentials_changed=False):
+    def _check_spotify(self, credentials_changed: bool = False) -> HttpResponse:
         if not self.spotify_client_id or not self.spotify_client_secret:
             self.spotify_enabled = False
             return HttpResponseBadRequest("Not all credentials provided")
@@ -150,7 +156,7 @@ class Settings(Stateful):
             return self._check_spotify_user()
         return self._check_spotify_service(credentials_changed=credentials_changed)
 
-    def _check_spotify_user(self):
+    def _check_spotify_user(self) -> HttpResponse:
         self.spotify_enabled = False
         config = subprocess.run(
             ["mopidy", "config"],
@@ -168,7 +174,7 @@ class Settings(Stateful):
             pass
         return HttpResponseBadRequest("Config is invalid")
 
-    def _check_spotify_service(self, credentials_changed=False):
+    def _check_spotify_service(self, credentials_changed: bool = False) -> HttpResponse:
         if credentials_changed:
             if shutil.which("cava"):
                 # if cava is installed, use the visualization config for mopidy
@@ -230,7 +236,7 @@ class Settings(Stateful):
             self.spotify_enabled = False
         return response
 
-    def _check_internet(self):
+    def _check_internet(self) -> None:
         response = subprocess.call(
             ["ping", "-c", "1", "-W", "3", "1.1.1.1"], stdout=subprocess.DEVNULL
         )
@@ -240,71 +246,71 @@ class Settings(Stateful):
             self.has_internet = False
 
     @option
-    def set_voting_system(self, request):
+    def set_voting_system(self, request: WSGIRequest) -> None:
         """Enables or disables the voting system based on the given value."""
         enabled = request.POST.get("value") == "true"
         Setting.objects.filter(key="voting_system").update(value=enabled)
         self.voting_system = enabled
 
     @option
-    def set_logging_enabled(self, request):
+    def set_logging_enabled(self, request: WSGIRequest) -> None:
         """Enables or disables logging of requests and play logs based on the given value."""
         enabled = request.POST.get("value") == "true"
         Setting.objects.filter(key="logging_enabled").update(value=enabled)
         self.logging_enabled = enabled
 
     @option
-    def set_people_to_party(self, request):
+    def set_people_to_party(self, request: WSGIRequest) -> None:
         """Sets the amount of active clients needed to enable partymode."""
         value = int(request.POST.get("value"))
         Setting.objects.filter(key="people_to_party").update(value=value)
         self.people_to_party = value
 
     @option
-    def set_alarm_probability(self, request):
+    def set_alarm_probability(self, request: WSGIRequest) -> None:
         """Sets the probability with which an alarm is triggered after each song."""
         value = float(request.POST.get("value"))
         Setting.objects.filter(key="alarm_probability").update(value=value)
         self.alarm_probability = value
 
     @option
-    def set_downvotes_to_kick(self, request):
+    def set_downvotes_to_kick(self, request: WSGIRequest) -> None:
         """Sets the number of downvotes that are needed to remove a song from the queue."""
         value = int(request.POST.get("value"))
         Setting.objects.filter(key="downvotes_to_kick").update(value=value)
         self.downvotes_to_kick = value
 
     @option
-    def set_max_download_size(self, request):
+    def set_max_download_size(self, request: WSGIRequest) -> None:
         """Sets the maximum amount of MB that are allowed for a song that needs to be downloaded."""
         value = int(request.POST.get("value"))
         Setting.objects.filter(key="max_download_size").update(value=value)
         self.max_download_size = value
 
     @option
-    def set_max_playlist_items(self, request):
+    def set_max_playlist_items(self, request: WSGIRequest) -> None:
         """Sets the maximum number of songs that are downloaded from a playlist."""
         value = int(request.POST.get("value"))
         Setting.objects.filter(key="max_playlist_items").update(value=value)
         self.max_playlist_items = value
 
     @option
-    def check_internet(self, _request):
+    def check_internet(self, _request: WSGIRequest) -> None:
         """Checks whether an internet connection exists and updates the internal state."""
         self._check_internet()
 
     @option
-    def update_user_count(self, _request):
+    def update_user_count(self, _request: WSGIRequest) -> None:
         """Force an update on the active user count."""
         self.base.user_manager.update_user_count()
 
     @option
-    def check_spotify_credentials(self, _request):
+    def check_spotify_credentials(self, _request: WSGIRequest) -> HttpResponse:
         """Check whether the provided credentials are valid."""
         return self._check_spotify()
 
     @option
-    def set_spotify_credentials(self, request):
+    def set_spotify_credentials(self, request: WSGIRequest) -> HttpResponse:
         """Update spotify credentials."""
         username = request.POST.get("username")
         password = request.POST.get("password")
@@ -334,7 +340,7 @@ class Settings(Stateful):
 
         return self._check_spotify(credentials_changed=True)
 
-    def _get_bluetoothctl_line(self):
+    def _get_bluetoothctl_line(self) -> str:
         # Note: this variable is not guarded by a lock.
         # But there should only be one admin accessing these bluetooth functions anyway.
         if self.bluetoothctl is None:
@@ -345,13 +351,13 @@ class Settings(Stateful):
         line = line.strip()
         return line
 
-    def _stop_bluetoothctl(self):
+    def _stop_bluetoothctl(self) -> None:
         self.bluetoothctl.stdin.close()
         self.bluetoothctl.wait()
         self.bluetoothctl = None
 
     @option
-    def set_bluetooth_scanning(self, request):
+    def set_bluetooth_scanning(self, request: WSGIRequest) -> HttpResponse:
         """Enables scanning of bluetooth devices."""
         enabled = request.POST.get("value") == "true"
         if enabled:
@@ -391,7 +397,7 @@ class Settings(Stateful):
         return HttpResponse()
 
     @option
-    def connect_bluetooth(self, request):
+    def connect_bluetooth(self, request: WSGIRequest) -> HttpResponse:
         """Connect to a given bluetooth device."""
         address = request.POST.get("address")
         if self.bluetoothctl is not None:
@@ -406,7 +412,7 @@ class Settings(Stateful):
 
         # A Function that acts as a timeout for unexpected errors (or timeouts)
         @background_thread
-        def _timeout():
+        def _timeout() -> None:
             nonlocal error
             time.sleep(20)
             error = "Timed out"
@@ -475,7 +481,7 @@ class Settings(Stateful):
         return HttpResponse("Connected")
 
     @option
-    def disconnect_bluetooth(self, _request):
+    def disconnect_bluetooth(self, _request: WSGIRequest) -> HttpResponse:
         """Disconnect from the current bluetooth device."""
         subprocess.call("pactl set-default-sink 0".split(), stdout=subprocess.DEVNULL)
         # restart mopidy to apply audio device change
@@ -483,7 +489,7 @@ class Settings(Stateful):
         return HttpResponse("Disconnected")
 
     @option
-    def available_ssids(self, _request):
+    def available_ssids(self, _request: WSGIRequest) -> JsonResponse:
         """List all ssids that can currently be seen."""
         output = subprocess.check_output(
             ["sudo", "/usr/local/sbin/raveberry/list_available_ssids"]
@@ -493,7 +499,7 @@ class Settings(Stateful):
         return JsonResponse(ssids[:-1], safe=False)
 
     @option
-    def connect_to_wifi(self, request):
+    def connect_to_wifi(self, request: WSGIRequest) -> HttpResponse:
         """Connect to a given ssid with the given password."""
         ssid = request.POST.get("ssid")
         password = request.POST.get("password")
@@ -510,17 +516,17 @@ class Settings(Stateful):
             return HttpResponseBadRequest(output)
 
     @option
-    def disable_homewifi(self, _request):
+    def disable_homewifi(self, _request: WSGIRequest) -> None:
         """Disable homewifi function."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/disable_homewifi"])
 
     @option
-    def enable_homewifi(self, _request):
+    def enable_homewifi(self, _request: WSGIRequest) -> None:
         """Enable homewifi function."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/enable_homewifi"])
 
     @option
-    def stored_ssids(self, _request):
+    def stored_ssids(self, _request: WSGIRequest) -> JsonResponse:
         """Return the list of ssids that this Raspberry Pi was connected to in the past."""
         output = subprocess.check_output(
             ["sudo", "/usr/local/sbin/raveberry/list_stored_ssids"]
@@ -530,7 +536,7 @@ class Settings(Stateful):
         return JsonResponse(ssids[:-1], safe=False)
 
     @option
-    def set_homewifi_ssid(self, request):
+    def set_homewifi_ssid(self, request: WSGIRequest) -> None:
         """Set the home network.
         The hotspot will not be created if connected to this wifi."""
         homewifi_ssid = request.POST.get("homewifi_ssid")
@@ -538,7 +544,7 @@ class Settings(Stateful):
             f.write(homewifi_ssid)
 
     @option
-    def list_subdirectories(self, request):
+    def list_subdirectories(self, request: WSGIRequest) -> HttpResponse:
         """Returns a list of all subdirectories for the given path."""
         path = request.GET.get("path")
         basedir, subdirpart = os.path.split(path)
@@ -558,7 +564,7 @@ class Settings(Stateful):
         return JsonResponse(suggestions, safe=False)
 
     @option
-    def scan_library(self, request):
+    def scan_library(self, request: WSGIRequest) -> HttpResponse:
         """Scan the folder at the given path and add all its sound files to the database."""
         library_path = request.POST.get("library_path")
 
@@ -576,7 +582,7 @@ class Settings(Stateful):
         )
 
     @background_thread
-    def _scan_library(self, library_path):
+    def _scan_library(self, library_path: str) -> None:
         scan_start = time.time()
         last_update = scan_start
         update_frequency = 0.5
@@ -642,7 +648,7 @@ class Settings(Stateful):
         self.base.logger.info(f"done scanning in {library_path}")
 
     @option
-    def create_playlists(self, _request):
+    def create_playlists(self, _request: WSGIRequest) -> HttpResponse:
         """Create a playlist for every folder in the library."""
         library_link = os.path.join(settings.SONGS_CACHE_DIR, "local_library")
         if not os.path.islink(library_link):
@@ -656,7 +662,7 @@ class Settings(Stateful):
         return HttpResponse(f"started creating playlsts. This could take a while")
 
     @background_thread
-    def _create_playlists(self):
+    def _create_playlists(self) -> None:
         local_files = ArchivedSong.objects.filter(
             url__startswith="local_library"
         ).count()
@@ -722,7 +728,7 @@ class Settings(Stateful):
         self.base.logger.info(f"finished creating playlists in {library_path}")
 
     @option
-    def analyse(self, request):
+    def analyse(self, request: WSGIRequest) -> HttpResponse:
         """Perform an analysis of the database in the given timeframe."""
         startdate = request.POST.get("startdate")
         starttime = request.POST.get("starttime")
@@ -822,65 +828,65 @@ class Settings(Stateful):
         return JsonResponse(response)
 
     @option
-    def disable_events(self, _request):
+    def disable_events(self, _request: WSGIRequest) -> None:
         """Disable websocket support."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/disable_events"])
 
     @option
-    def enable_events(self, _request):
+    def enable_events(self, _request: WSGIRequest) -> None:
         """Enable websocket support."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/enable_events"])
 
     @option
-    def disable_hotspot(self, _request):
+    def disable_hotspot(self, _request: WSGIRequest) -> None:
         """Disable the wifi created by Raveberry."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/disable_hotspot"])
 
     @option
-    def enable_hotspot(self, _request):
+    def enable_hotspot(self, _request: WSGIRequest) -> None:
         """Enable the wifi created by Raveberry."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/enable_hotspot"])
 
     @option
-    def unprotect_wifi(self, _request):
+    def unprotect_wifi(self, _request: WSGIRequest) -> None:
         """Disable password protection of the hotspot, making it public."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/unprotect_wifi"])
 
     @option
-    def protect_wifi(self, _request):
+    def protect_wifi(self, _request: WSGIRequest) -> None:
         """Enable password protection of the hotspot.
         The password was defined during setup."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/protect_wifi"])
 
     @option
-    def disable_tunneling(self, _request):
+    def disable_tunneling(self, _request: WSGIRequest) -> None:
         """Disable forwarding of packets to the other network (probably the internet)."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/disable_tunneling"])
 
     @option
-    def enable_tunneling(self, _request):
+    def enable_tunneling(self, _request: WSGIRequest) -> None:
         """Enable forwarding of packets to the other network.
         Enables clients connected to the hotspot to browse the internet (if available)."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/disable_tunneling"])
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/enable_tunneling"])
 
     @option
-    def disable_remote(self, _request):
+    def disable_remote(self, _request: WSGIRequest) -> None:
         """Disables the connection to an external server."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/disable_remote"])
 
     @option
-    def enable_remote(self, _request):
+    def enable_remote(self, _request: WSGIRequest) -> None:
         """Enables the connection to an external server.
         Allows this instance to be reachable from a public domain."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/enable_remote"])
 
     @option
-    def reboot_server(self, _request):
+    def reboot_server(self, _request: WSGIRequest) -> None:
         """Restarts the server."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/reboot_server"])
 
     @option
-    def reboot_system(self, _request):
+    def reboot_system(self, _request: WSGIRequest) -> None:
         """Reboots the system."""
         subprocess.call(["sudo", "/usr/local/sbin/raveberry/reboot_system"])

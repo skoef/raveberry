@@ -1,6 +1,8 @@
 """This module handles the suggestions when starting to
 type into the input field on the musiq page."""
 
+from __future__ import annotations
+
 import random
 
 from django.db.models import Q
@@ -11,16 +13,18 @@ from core.models import ArchivedPlaylist, ArchivedSong
 from core.musiq.music_provider import SongProvider
 from core.musiq.spotify import Spotify
 from core.musiq.youtube import Youtube
+from django.core.handlers.wsgi import WSGIRequest
+from django.http.response import JsonResponse, HttpResponse
 
 
 class Suggestions:
     """This class provides endpoints that serve suggestions."""
 
-    def __init__(self, musiq):
+    def __init__(self, musiq: "Musiq") -> None:
         self.musiq = musiq
 
     @classmethod
-    def random_suggestion(cls, request):
+    def random_suggestion(cls, request: WSGIRequest) -> HttpResponse:
         """This method returns a random suggestion from the database.
         Depending on the value of :param playlist:,
         either a previously pushed playlist or song is returned."""
@@ -44,7 +48,7 @@ class Suggestions:
         playlist = remaining_playlists.all()[index]
         return JsonResponse({"suggestion": playlist.title, "key": playlist.id})
 
-    def get_suggestions(self, request):
+    def get_suggestions(self, request: WSGIRequest) -> JsonResponse:
         """Returns suggestions for a given query.
         Combines online and offline suggestions."""
         terms = request.GET["term"].split()

@@ -6,22 +6,22 @@ import mutagen.easymp4
 
 from main import settings
 from typing import TYPE_CHECKING
-from typing_extensions import TypedDict
 
 if TYPE_CHECKING:
+    from typing_extensions import TypedDict
     from core.musiq.music_provider import ArchivedPlaylist
 
-Metadata = TypedDict(
-    "Metadata",
-    {
-        "artist": str,
-        "title": str,
-        "duration": float,
-        "internal_url": str,
-        "external_url": str,
-    },
-    total=False,
-)
+    Metadata = TypedDict(
+        "Metadata",
+        {
+            "artist": str,
+            "title": str,
+            "duration": float,
+            "internal_url": str,
+            "external_url": str,
+        },
+        total=False,
+    )
 
 
 def get_path(basename: str) -> str:
@@ -67,14 +67,14 @@ def displayname(artist: str, title: str) -> str:
     return artist + " – " + title
 
 
-def get_metadata(path: str) -> Metadata:
+def get_metadata(path: str) -> "Metadata":
     """gathers the metadata for the song at the given location.
     'title' and 'duration' is read from tags, the 'url' is built from the location"""
 
     parsed = mutagen.File(path, easy=True)
     if parsed is None:
         raise ValueError
-    metadata: Metadata = {}
+    metadata: "Metadata" = {}
 
     if parsed.tags is not None:
         if "artist" in parsed.tags:

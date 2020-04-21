@@ -104,7 +104,7 @@ class SpotifySongProvider(SongProvider, Spotify):
 
         self.type = "spotify"
         self.spotify_library = musiq.player.player.library
-        self.metadata: Metadata = {}
+        self.metadata: "Metadata" = {}
 
     def check_cached(self) -> bool:
         if self.query is not None and self.query.startswith(
@@ -158,7 +158,7 @@ class SpotifySongProvider(SongProvider, Spotify):
         self.metadata["title"] = track_info.name
         self.metadata["duration"] = track_info.length / 1000
 
-    def get_metadata(self) -> Metadata:
+    def get_metadata(self) -> "Metadata":
         if not self.metadata:
             self.gather_metadata()
         return self.metadata

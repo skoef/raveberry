@@ -217,7 +217,7 @@ class SongProvider(MusicProvider):
         """Returns the external url of a suggested song based on this one."""
         raise NotImplementedError()
 
-    def get_metadata(self) -> Metadata:
+    def get_metadata(self) -> "Metadata":
         """Returns a dictionary of this song's metadata."""
         raise NotImplementedError()
 

@@ -42,7 +42,7 @@ class LocalSongProvider(SongProvider):
         self.error = "Local file missing"
         return False
 
-    def get_metadata(self) -> Metadata:
+    def get_metadata(self) -> "Metadata":
         metadata = song_utils.get_metadata(self._get_path())
 
         metadata["internal_url"] = self.get_internal_url()

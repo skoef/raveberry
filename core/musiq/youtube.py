@@ -235,7 +235,7 @@ class YoutubeSongProvider(SongProvider, Youtube):
                 thread.join()
         return True
 
-    def get_metadata(self) -> Metadata:
+    def get_metadata(self) -> "Metadata":
         if not self.id:
             raise ValueError()
         metadata = song_utils.get_metadata(self._get_path())

@@ -19,7 +19,7 @@ class SongQueue(models.Manager):
     Handles all operations on the queue."""
 
     @transaction.atomic
-    def enqueue(self, metadata: Metadata, manually_requested: bool) -> QueuedSong:
+    def enqueue(self, metadata: "Metadata", manually_requested: bool) -> QueuedSong:
         """Creates a new song at the end of the queue and returns it."""
         last = self.last()
         index = 1 if last is None else last.index + 1

@@ -12,7 +12,7 @@ import subprocess
 import time
 from datetime import timedelta
 from functools import wraps
-from typing import Callable, Dict, Any
+from typing import Callable, Dict, Any, TYPE_CHECKING, Optional, List
 
 from dateutil import tz
 from django.conf import settings
@@ -35,10 +35,12 @@ from core.models import Setting, ArchivedSong, ArchivedPlaylist, PlaylistEntry
 from core.state_handler import Stateful
 from core.util import background_thread
 
+if TYPE_CHECKING:
+    from core.base import Base
 
-# settings can only be changed by admin
+
 def option(
-    func: Callable[["Settings", WSGIRequest], HttpResponse]
+    func: Callable[["Settings", WSGIRequest], Optional[HttpResponse]]
 ) -> Callable[["Settings", WSGIRequest], HttpResponse]:
     """A decorator that makes sure that only the admin changes a setting."""
 
@@ -83,8 +85,8 @@ class Settings(Stateful):
         self.spotify_enabled = False
         self._check_spotify()
         self._check_internet()
-        self.bluetoothctl = None
-        self.bluetooth_devices = []
+        self.bluetoothctl: Optional[subprocess.Popen[bytes]] = None
+        self.bluetooth_devices: List[Dict[str, str]] = []
         self.homewifi = self.get_setting("homewifi", "")
         self.scan_progress = "0 / 0 / 0"
 
@@ -204,6 +206,7 @@ class Settings(Stateful):
             universal_newlines=True,
         )
         login_error = False
+        response: HttpResponse
         for line in log.split("\n")[::-1]:
             if line.startswith("ERROR") and "spotify.session" in line:
                 login_error = True
@@ -262,35 +265,35 @@ class Settings(Stateful):
     @option
     def set_people_to_party(self, request: WSGIRequest) -> None:
         """Sets the amount of active clients needed to enable partymode."""
-        value = int(request.POST.get("value"))
+        value = int(request.POST.get("value"))  # type: ignore
         Setting.objects.filter(key="people_to_party").update(value=value)
         self.people_to_party = value
 
     @option
     def set_alarm_probability(self, request: WSGIRequest) -> None:
         """Sets the probability with which an alarm is triggered after each song."""
-        value = float(request.POST.get("value"))
+        value = float(request.POST.get("value"))  # type: ignore
         Setting.objects.filter(key="alarm_probability").update(value=value)
         self.alarm_probability = value
 
     @option
     def set_downvotes_to_kick(self, request: WSGIRequest) -> None:
         """Sets the number of downvotes that are needed to remove a song from the queue."""
-        value = int(request.POST.get("value"))
+        value = int(request.POST.get("value"))  # type: ignore
         Setting.objects.filter(key="downvotes_to_kick").update(value=value)
         self.downvotes_to_kick = value
 
     @option
     def set_max_download_size(self, request: WSGIRequest) -> None:
         """Sets the maximum amount of MB that are allowed for a song that needs to be downloaded."""
-        value = int(request.POST.get("value"))
+        value = int(request.POST.get("value"))  # type: ignore
         Setting.objects.filter(key="max_download_size").update(value=value)
         self.max_download_size = value
 
     @option
     def set_max_playlist_items(self, request: WSGIRequest) -> None:
         """Sets the maximum number of songs that are downloaded from a playlist."""
-        value = int(request.POST.get("value"))
+        value = int(request.POST.get("value"))  # type: ignore
         Setting.objects.filter(key="max_playlist_items").update(value=value)
         self.max_playlist_items = value
 
@@ -345,6 +348,7 @@ class Settings(Stateful):
         # But there should only be one admin accessing these bluetooth functions anyway.
         if self.bluetoothctl is None:
             return ""
+        assert self.bluetoothctl.stdout
         line = self.bluetoothctl.stdout.readline().decode()
         ansi_escape = re.compile(r"\x1B\[[0-?]*[ -/]*[@-~]")
         line = ansi_escape.sub("", line)
@@ -352,8 +356,10 @@ class Settings(Stateful):
         return line
 
     def _stop_bluetoothctl(self) -> None:
-        self.bluetoothctl.stdin.close()
-        self.bluetoothctl.wait()
+        if self.bluetoothctl:
+            assert self.bluetoothctl.stdin
+            self.bluetoothctl.stdin.close()
+            self.bluetoothctl.wait()
         self.bluetoothctl = None
 
     @option
@@ -367,6 +373,7 @@ class Settings(Stateful):
             self.bluetoothctl = subprocess.Popen(
                 ["bluetoothctl"], stdin=subprocess.PIPE, stdout=subprocess.PIPE
             )
+            assert self.bluetoothctl.stdin
 
             self.bluetoothctl.stdin.write(b"devices\n")
             self.bluetoothctl.stdin.write(b"scan on\n")
@@ -408,6 +415,7 @@ class Settings(Stateful):
         self.bluetoothctl = subprocess.Popen(
             ["bluetoothctl"], stdin=subprocess.PIPE, stdout=subprocess.PIPE
         )
+        assert self.bluetoothctl.stdin
         error = ""
 
         # A Function that acts as a timeout for unexpected errors (or timeouts)
@@ -493,8 +501,7 @@ class Settings(Stateful):
         """List all ssids that can currently be seen."""
         output = subprocess.check_output(
             ["sudo", "/usr/local/sbin/raveberry/list_available_ssids"]
-        )
-        output = output.decode()
+        ).decode()
         ssids = output.split("\n")
         return JsonResponse(ssids[:-1], safe=False)
 
@@ -508,8 +515,7 @@ class Settings(Stateful):
         try:
             output = subprocess.check_output(
                 ["sudo", "/usr/local/sbin/raveberry/connect_to_wifi", ssid, password]
-            )
-            output = output.decode()
+            ).decode()
             return HttpResponse(output)
         except subprocess.CalledProcessError as e:
             output = e.output.decode()
@@ -530,23 +536,27 @@ class Settings(Stateful):
         """Return the list of ssids that this Raspberry Pi was connected to in the past."""
         output = subprocess.check_output(
             ["sudo", "/usr/local/sbin/raveberry/list_stored_ssids"]
-        )
-        output = output.decode()
+        ).decode()
         ssids = output.split("\n")
         return JsonResponse(ssids[:-1], safe=False)
 
     @option
-    def set_homewifi_ssid(self, request: WSGIRequest) -> None:
+    def set_homewifi_ssid(self, request: WSGIRequest) -> HttpResponse:
         """Set the home network.
         The hotspot will not be created if connected to this wifi."""
         homewifi_ssid = request.POST.get("homewifi_ssid")
+        if homewifi_ssid is None:
+            return HttpResponseBadRequest("homewifi ssid was not supplied.")
         with open(os.path.join(settings.BASE_DIR, "config/homewifi"), "w+") as f:
             f.write(homewifi_ssid)
+        return HttpResponse()
 
     @option
     def list_subdirectories(self, request: WSGIRequest) -> HttpResponse:
         """Returns a list of all subdirectories for the given path."""
         path = request.GET.get("path")
+        if path is None:
+            return HttpResponseBadRequest("path was not supplied.")
         basedir, subdirpart = os.path.split(path)
         if path == "":
             suggestions = ["/"]
@@ -567,6 +577,8 @@ class Settings(Stateful):
     def scan_library(self, request: WSGIRequest) -> HttpResponse:
         """Scan the folder at the given path and add all its sound files to the database."""
         library_path = request.POST.get("library_path")
+        if library_path is None:
+            return HttpResponseBadRequest("library path was not supplied.")
 
         if not os.path.isdir(library_path):
             return HttpResponseBadRequest("not a directory")
@@ -783,7 +795,7 @@ class Settings(Stateful):
                 + f" ({played_count[0]['count']})"
             ),
             "highest_voted_song": (
-                played_votes[0].song.displayname() + f" ({played_votes[0].votes})"
+                played_votes[0].song_displayname() + f" ({played_votes[0].votes})"
             ),
             "most_active_device": (devices[0]["address"] + f" ({devices[0]['count']})"),
         }
@@ -795,14 +807,14 @@ class Settings(Stateful):
             if i == 5:
                 response["most_active_device"] += "..."
             else:
-                response["most_active_device"] += requested_by_ip[i].song.displayname()
+                response["most_active_device"] += requested_by_ip[i].item_displayname()
 
         binsize = 3600
         number_of_bins = math.ceil((end - start).total_seconds() / binsize)
         request_bins = [0 for _ in range(number_of_bins)]
 
-        for log in requested:
-            seconds = (log.created - start).total_seconds()
+        for request_log in requested:
+            seconds = (request_log.created - start).total_seconds()
             index = int(seconds / binsize)
             request_bins[index] += 1
 
@@ -818,10 +830,10 @@ class Settings(Stateful):
 
         localtz = tz.gettz(settings.TIME_ZONE)
         playlist = ""
-        for log in played:
-            localtime = log.created.astimezone(localtz)
+        for play_log in played:
+            localtime = play_log.created.astimezone(localtz)
             playlist += "[{:02d}:{:02d}] {}\n".format(
-                localtime.hour, localtime.minute, log.song.displayname()
+                localtime.hour, localtime.minute, play_log.song_displayname()
             )
         response["playlist"] = playlist
 

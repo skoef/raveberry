@@ -25,11 +25,14 @@ from core.lights.strip import Strip
 from core.models import Setting
 from core.util import background_thread
 from django.core.handlers.wsgi import WSGIRequest
-from typing import Callable, Dict, Any, Optional
+from typing import Callable, Dict, Any, Optional, TYPE_CHECKING, cast, Tuple
+
+if TYPE_CHECKING:
+    from core.base import Base
 
 
 def option(
-    func: Callable[["Lights", WSGIRequest], HttpResponse]
+    func: Callable[["Lights", WSGIRequest], Optional[HttpResponse]]
 ) -> Callable[["Lights", WSGIRequest], HttpResponse]:
     """A decorator that makes sure that all changes to the lights are synchronized."""
 
@@ -74,17 +77,26 @@ class Lights(Stateful):
         # if the led loop is running
         self.loop_active = threading.Event()
 
+        self.disabled_program = Disabled(self)
         self.cava_program = Cava(self)
         self.alarm_program = Alarm(self)
-        # a dictionary containing all programs by their name
-        self.programs = {}
-        for program_class in [Disabled, Fixed, Alarm, Rainbow, Adaptive, Circle]:
-            instance = program_class(self)
-            self.programs[instance.name] = instance
+        # a dictionary containing all led programs by their name
+        self.led_programs: Dict[str, LedProgram] = {"Disabled": self.disabled_program}
+        for led_program_class in [Fixed, Rainbow, Adaptive]:
+            led_instance = led_program_class(self)
+            self.led_programs[led_instance.name] = led_instance
+        self.screen_programs: Dict[str, ScreenProgram] = {
+            "Disabled": self.disabled_program
+        }
+        for screen_program_class in [Circle]:
+            screen_instance = screen_program_class(self)
+            self.screen_programs[screen_instance.name] = screen_instance
 
         # this lock ensures that only one thread changes led options
         self.option_lock = threading.Lock()
-        self.program_speed = 1
+        self.program_speed = 1.0
+        self.fixed_color = (0.0, 0.0, 0.0)
+        self.last_fixed_color = self.fixed_color
 
         last_ring_program_name = self.base.settings.get_setting(
             "last_ring_program", "Disabled"
@@ -101,21 +113,20 @@ class Lights(Stateful):
             "screen_program", "Disabled"
         )
 
-        self.last_ring_program = self.programs[last_ring_program_name]
-        self.last_strip_program = self.programs[last_strip_program_name]
-        self.last_screen_program = self.programs[last_screen_program_name]
-        self.last_fixed_color = self.programs["Fixed"].color
+        self.last_ring_program = self.led_programs[last_ring_program_name]
+        self.last_strip_program = self.led_programs[last_strip_program_name]
+        self.last_screen_program = self.screen_programs[last_screen_program_name]
 
-        self.ring_program = self.programs[ring_program_name]
-        self.strip_program = self.programs[strip_program_name]
-        self.screen_program = self.programs[screen_program_name]
+        self.ring_program = self.led_programs[ring_program_name]
+        self.strip_program = self.led_programs[strip_program_name]
+        self.screen_program = self.screen_programs[screen_program_name]
         # disable disconnected devices
         if not self.ring.initialized:
-            self.ring_program = self.programs["Disabled"]
+            self.ring_program = self.disabled_program
         if not self.strip.initialized:
-            self.strip_program = self.programs["Disabled"]
+            self.strip_program = self.disabled_program
         if not self.screen.initialized:
-            self.screen_program = self.programs["Disabled"]
+            self.screen_program = self.disabled_program
         self.ring_program.use()
         self.strip_program.use()
         self.screen_program.use()
@@ -127,7 +138,7 @@ class Lights(Stateful):
     def _loop(self) -> None:
         iteration_count = 0
         adaptive_quality_window = self.UPS * 10
-        time_sum = 0
+        time_sum = 0.0
         while True:
             self.loop_active.wait()
 
@@ -171,7 +182,7 @@ class Lights(Stateful):
                 ):
                     average_computation_time = time_sum / adaptive_quality_window
                     iteration_count = 0
-                    time_sum = 0
+                    time_sum = 0.0
 
                     # print(f"avg: {average_computation_time/self.seconds_per_frame}")
                     if average_computation_time > 0.9 * self.seconds_per_frame:
@@ -190,7 +201,7 @@ class Lights(Stateful):
                 pass
 
     def _consumers_changed(self) -> None:
-        if self.programs["Disabled"].consumers == 3:
+        if self.disabled_program.consumers == 3:
             self.loop_active.clear()
         else:
             self.loop_active.set()
@@ -260,16 +271,16 @@ class Lights(Stateful):
         """Makes alarm the current program but doesn't update the database."""
         with self.option_lock:
             self.alarm_program.use()
-            self.last_fixed_color = self.programs["Fixed"].color
-            self._set_ring_program(self.programs["Fixed"], transient=True)
-            self._set_strip_program(self.programs["Fixed"], transient=True)
+            self.last_fixed_color = self.fixed_color
+            self._set_ring_program(self.led_programs["Fixed"], transient=True)
+            self._set_strip_program(self.led_programs["Fixed"], transient=True)
             # the screen program adapts with the alarm and is not changed
 
     def alarm_stopped(self) -> None:
         """Restores the state from before the alarm."""
         with self.option_lock:
             self.alarm_program.release()
-            self.programs["Fixed"].color = self.last_fixed_color
+            self.fixed_color = self.last_fixed_color
             self._set_ring_program(self.last_ring_program, transient=True)
             self._set_strip_program(self.last_strip_program, transient=True)
 
@@ -278,8 +289,8 @@ class Lights(Stateful):
             last_strip_program_name = Setting.objects.get(
                 key="last_strip_program"
             ).value
-            self.last_ring_program = self.programs[last_ring_program_name]
-            self.last_strip_program = self.programs[last_strip_program_name]
+            self.last_ring_program = self.led_programs[last_ring_program_name]
+            self.last_strip_program = self.led_programs[last_strip_program_name]
 
     def state_dict(self) -> Dict[str, Any]:
         state_dict = self.base.state_dict()
@@ -294,7 +305,7 @@ class Lights(Stateful):
         state_dict["screen_program"] = self.screen_program.name
         state_dict["program_speed"] = self.program_speed
         state_dict["fixed_color"] = "#{:02x}{:02x}{:02x}".format(
-            *(int(val * 255) for val in self.programs["Fixed"].color)
+            *(int(val * 255) for val in self.fixed_color)
         )
         return state_dict
 
@@ -304,14 +315,10 @@ class Lights(Stateful):
         # programs that have a strip_color or ring_color function are color programs
         # programs that have a draw function are screen programs
         context["color_program_names"] = [
-            program.name
-            for program in self.programs.values()
-            if getattr(program, "ring_colors", None)
+            program.name for program in self.led_programs.values()
         ]
         context["screen_program_names"] = [
-            program.name
-            for program in self.programs.values()
-            if getattr(program, "draw", None)
+            program.name for program in self.screen_programs.values()
         ]
         # context['program_names'].remove('Alarm')
         return render(request, "lights.html", context)
@@ -330,14 +337,16 @@ class Lights(Stateful):
             self._set_ring_program(self.last_ring_program)
             self._set_strip_program(self.last_strip_program)
         else:
-            self._set_ring_program(self.programs["Disabled"])
-            self._set_strip_program(self.programs["Disabled"])
+            self._set_ring_program(self.disabled_program)
+            self._set_strip_program(self.disabled_program)
 
     @option
     def set_ring_program(self, request: WSGIRequest) -> None:
         """Updates the ring program."""
         program_name = request.POST.get("program")
-        program = self.programs[program_name]
+        if not program_name:
+            return
+        program = self.led_programs[program_name]
         if program == self.ring_program:
             # the program doesn't change, return immediately
             return
@@ -347,20 +356,20 @@ class Lights(Stateful):
     def set_ring_brightness(self, request: WSGIRequest) -> None:
         """Updates the ring brightness."""
         # raises ValueError on wrong input, caught in option decorator
-        value = float(request.POST.get("value"))
+        value = float(request.POST.get("value"))  # type: ignore
         self.ring.brightness = value
 
     @option
     def set_ring_monochrome(self, request: WSGIRequest) -> None:
         """Sets whether the ring should be in one color only."""
-        enabled = request.POST.get("value") == "true"
+        enabled = request.POST.get("value") == "true"  # type: ignore
         self.ring.monochrome = enabled
 
     @option
     def set_strip_program(self, request: WSGIRequest) -> None:
         """Updates the strip program."""
         program_name = request.POST.get("program")
-        program = self.programs[program_name]
+        program = self.led_programs[program_name]  # type: ignore
         if program == self.strip_program:
             # the program doesn't change, return immediately
             return
@@ -370,7 +379,7 @@ class Lights(Stateful):
     def set_strip_brightness(self, request: WSGIRequest) -> None:
         """Updates the strip brightness."""
         # raises ValueError on wrong input, caught in option decorator
-        value = float(request.POST.get("value"))
+        value = float(request.POST.get("value"))  # type: ignore
         self.strip.brightness = value
 
     @option
@@ -387,7 +396,7 @@ class Lights(Stateful):
     def set_screen_program(self, request: WSGIRequest) -> None:
         """Updates the screen program."""
         program_name = request.POST.get("program")
-        program = self.programs[program_name]
+        program = self.screen_programs[program_name]  # type: ignore
         if program == self.screen_program:
             # the program doesn't change, return immediately
             return
@@ -396,13 +405,15 @@ class Lights(Stateful):
     @option
     def set_program_speed(self, request: WSGIRequest) -> None:
         """Updates the global speed of programs supporting it."""
-        value = float(request.POST.get("value"))
+        value = float(request.POST.get("value"))  # type: ignore
         self.program_speed = value
 
     @option
     def set_fixed_color(self, request: WSGIRequest) -> None:
         """Updates the static color used for some programs."""
-        hex_col = request.POST.get("value").lstrip("#")
+        hex_col = request.POST.get("value").lstrip("#")  # type: ignore
         # raises IndexError on wrong input, caught in option decorator
         color = tuple(int(hex_col[i : i + 2], 16) / 255 for i in (0, 2, 4))
-        self.programs["Fixed"].color = color
+        # https://github.com/python/mypy/issues/5068
+        color = cast(Tuple[float, float, float], color)
+        self.fixed_color = color

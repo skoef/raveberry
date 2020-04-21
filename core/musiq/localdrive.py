@@ -8,7 +8,11 @@ from core.models import ArchivedPlaylist, PlaylistEntry
 from core.musiq import song_utils
 from core.musiq.music_provider import SongProvider, PlaylistProvider
 from django.http.response import HttpResponse
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.musiq.musiq import Musiq
+    from core.musiq.song_utils import Metadata
 
 
 class LocalSongProvider(SongProvider):
@@ -28,7 +32,7 @@ class LocalSongProvider(SongProvider):
         return url[len("local_library/") :]
 
     def __init__(
-        self, musiq: "Musiq", query: Optional[str], key: Optional[str]
+        self, musiq: "Musiq", query: Optional[str], key: Optional[int]
     ) -> None:
         super().__init__(musiq, query, key)
         self.type = "local"
@@ -38,7 +42,7 @@ class LocalSongProvider(SongProvider):
         self.error = "Local file missing"
         return False
 
-    def get_metadata(self) -> Dict[str, Union[str, float]]:
+    def get_metadata(self) -> Metadata:
         metadata = song_utils.get_metadata(self._get_path())
 
         metadata["internal_url"] = self.get_internal_url()
@@ -55,6 +59,8 @@ class LocalSongProvider(SongProvider):
         return "file://" + self._get_path()
 
     def get_external_url(self) -> str:
+        if not self.id:
+            raise ValueError()
         return "local_library/" + self.id
 
     def _get_corresponding_playlist(self) -> ArchivedPlaylist:

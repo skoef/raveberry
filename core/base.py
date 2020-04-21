@@ -72,7 +72,7 @@ class Base(Stateful):
             "spotify_enabled": self.settings.spotify_enabled,
         }
 
-    def state_dict(self) -> Dict[str, Union[bool, int, str]]:
+    def state_dict(self) -> Dict[str, Any]:
         # this function constructs a base state dictionary with website wide state
         # pages sending states extend this state dictionary
         return {

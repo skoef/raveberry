@@ -11,13 +11,19 @@ from core.models import Setting
 from core.musiq import song_utils
 from core.musiq.music_provider import SongProvider, PlaylistProvider
 from django.http.response import HttpResponse
-from typing import Dict, Optional, Union, List, Tuple
+from typing import Dict, Optional, Union, List, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.musiq.musiq import Musiq
+    from mopidy.models import Track
+    from core.musiq.song_utils import Metadata
+    from core.musiq.player import Player
 
 
 class Spotify:
     """This class contains code for both the song and playlist provider"""
 
-    _web_client = None
+    _web_client: OAuthClient = None  # type: ignore
 
     @property
     def web_client(self) -> OAuthClient:
@@ -98,7 +104,7 @@ class SpotifySongProvider(SongProvider, Spotify):
 
         self.type = "spotify"
         self.spotify_library = musiq.player.player.library
-        self.metadata = dict()
+        self.metadata: Metadata = {}
 
     def check_cached(self) -> bool:
         if self.query is not None and self.query.startswith(
@@ -152,7 +158,7 @@ class SpotifySongProvider(SongProvider, Spotify):
         self.metadata["title"] = track_info.name
         self.metadata["duration"] = track_info.length / 1000
 
-    def get_metadata(self) -> Dict[str, Union[str, float]]:
+    def get_metadata(self) -> Metadata:
         if not self.metadata:
             self.gather_metadata()
         return self.metadata
@@ -162,9 +168,13 @@ class SpotifySongProvider(SongProvider, Spotify):
         raise NotImplementedError()
 
     def get_internal_url(self) -> str:
+        if not self.id:
+            raise ValueError()
         return "spotify:track:" + self.id
 
     def get_external_url(self) -> str:
+        if not self.id:
+            raise ValueError()
         return "https://open.spotify.com/track/" + self.id
 
     def get_suggestion(self) -> str:
@@ -177,7 +187,7 @@ class SpotifySongProvider(SongProvider, Spotify):
             external_url = result["tracks"][0]["external_urls"]["spotify"]
         except IndexError:
             self.error = "no recommendation found"
-            return None
+            raise ValueError("No suggested track")
 
         return external_url
 

@@ -19,7 +19,7 @@ class Ring:
     LED_OFFSET = 12  # at which index the zeroth pixel is located.
 
     def __init__(self) -> None:
-        self.brightness = 1
+        self.brightness = 1.0
         self.monochrome = False
 
         self.controller = rpi_ws281x.Adafruit_NeoPixel(

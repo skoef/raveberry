@@ -1,6 +1,7 @@
 """Contains all database models."""
 
 from django.db import models
+from django.db.models import QuerySet
 
 import core.musiq.song_queue
 import core.musiq.song_utils as song_utils
@@ -46,6 +47,8 @@ class ArchivedPlaylist(models.Model):
     """Stores an archived playlist.
     url identifies the playlist uniquely in the database and on the internet (if applicable)."""
 
+    id: int
+    entries: QuerySet
     list_id = models.CharField(max_length=200)
     title = models.CharField(max_length=1000)
     created = models.DateTimeField(auto_now_add=True)
@@ -98,6 +101,7 @@ class ArchivedPlaylistQuery(models.Model):
 class QueuedSong(models.Model):
     """Stores a song in the song queue so the queue is not lost on server restart."""
 
+    id: int
     index = models.IntegerField()
     manually_requested = models.BooleanField()
     votes = models.IntegerField(default=0)
@@ -152,6 +156,13 @@ class RequestLog(models.Model):
     )
     address = models.CharField(max_length=50)
 
+    def item_displayname(self) -> str:
+        if self.song is not None:
+            return self.song.displayname()
+        if self.playlist is not None:
+            return self.playlist.title
+        return "Unknown"
+
     def __str__(self) -> str:
         if self.song is not None:
             return self.address + ": " + self.song.displayname()
@@ -170,9 +181,15 @@ class PlayLog(models.Model):
     manually_requested = models.BooleanField()
     votes = models.IntegerField(null=True)
 
+    def song_displayname(self) -> str:
+        if not self.song:
+            return "Unknown"
+        else:
+            return self.song.displayname()
+
     def __str__(self) -> str:
         return (
-            "played " + self.song.displayname() + " with " + str(self.votes) + " votes"
+            "played " + self.song_displayname() + " with " + str(self.votes) + " votes"
         )
 
 

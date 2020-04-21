@@ -20,7 +20,11 @@ from core.models import (
 )
 from core.models import RequestLog
 from core.util import background_thread
-from typing import Optional, Union, Dict
+from typing import Optional, Union, Dict, TYPE_CHECKING, Type, List, cast
+
+if TYPE_CHECKING:
+    from core.musiq.musiq import Musiq
+    from core.musiq.song_utils import Metadata
 
 
 class MusicProvider:
@@ -33,9 +37,10 @@ class MusicProvider:
         self.musiq = musiq
         self.query = query
         self.key = key
-        self.id = None
+        self.id: Optional[str] = None
         self.type = "unknown"
-        self.placeholder = None
+        self.placeholder: Optional[Dict[str, Union[Optional[int], str]]] = None
+        self.ok_message = "ok"
         self.error = "error"
 
     def check_cached(self) -> bool:
@@ -53,7 +58,7 @@ class MusicProvider:
         background: bool = True,
         archive: bool = True,
         manually_requested: bool = True,
-    ) -> None:
+    ) -> bool:
         """Downloads this resource and enqueues it afterwards."""
         raise NotImplementedError()
 
@@ -92,6 +97,11 @@ class SongProvider(MusicProvider):
                 musiq.base.logger.error("archived song requested for nonexistent key")
                 raise ValueError()
             external_url = archived_song.url
+        if external_url is None:
+            raise ValueError(
+                "external_url was provided and could not be inferred from remaining attributes."
+            )
+        provider_class: Optional[Type[SongProvider]] = None
         if external_url.startswith("local_library/"):
             from core.musiq.localdrive import LocalSongProvider
 
@@ -104,7 +114,7 @@ class SongProvider(MusicProvider):
             from core.musiq.spotify import SpotifySongProvider
 
             provider_class = SpotifySongProvider
-        else:
+        if not provider_class:
             raise NotImplementedError(f"No provider for given song: {external_url}")
         provider = provider_class(musiq, query, key)
         provider.id = provider_class.get_id_from_external_url(external_url)
@@ -199,7 +209,7 @@ class SongProvider(MusicProvider):
         background: bool = True,
         archive: bool = True,
         manually_requested: bool = True,
-    ) -> None:
+    ) -> bool:
         # self.enqueue(request_ip, archive=archive, manually_requested=manually_requested)
         raise NotImplementedError()
 
@@ -207,7 +217,7 @@ class SongProvider(MusicProvider):
         """Returns the external url of a suggested song based on this one."""
         raise NotImplementedError()
 
-    def get_metadata(self) -> Dict[str, Union[str, float]]:
+    def get_metadata(self) -> Metadata:
         """Returns a dictionary of this song's metadata."""
         raise NotImplementedError()
 
@@ -229,6 +239,9 @@ class PlaylistProvider(MusicProvider):
         if query is None:
             musiq.base.logger.error("archived playlist requested but no query given")
             raise ValueError
+        if key is None:
+            musiq.base.logger.error("archived playlist requested but no key given")
+            raise ValueError
         try:
             archived_playlist = ArchivedPlaylist.objects.get(id=key)
         except ArchivedPlaylist.DoesNotExist:
@@ -236,6 +249,7 @@ class PlaylistProvider(MusicProvider):
             raise ValueError
 
         playlist_type = song_utils.determine_playlist_type(archived_playlist)
+        provider_class: Optional[Type[PlaylistProvider]] = None
         if playlist_type == "local":
             from core.musiq.localdrive import LocalPlaylistProvider
 
@@ -248,26 +262,29 @@ class PlaylistProvider(MusicProvider):
             from core.musiq.spotify import SpotifyPlaylistProvider
 
             provider_class = SpotifyPlaylistProvider
-        else:
+        if not provider_class:
             raise NotImplementedError(f"No provider for given playlist: {query}, {key}")
         provider = provider_class(musiq, query, key)
         return provider
 
     @staticmethod
-    def get_id_from_external_url(url: str) -> str:
+    def get_id_from_external_url(url: str) -> Optional[str]:
         """Constructs and returns the external id based on the given url."""
         raise NotImplementedError()
 
-    def __init__(self, musiq: "Musiq", query: str, key: Optional[int]) -> None:
+    def __init__(
+        self, musiq: "Musiq", query: Optional[str], key: Optional[int]
+    ) -> None:
         super().__init__(musiq, query, key)
         self.ok_message = "queueing playlist"
-        self.title = None
-        self.urls = []
+        self.title: Optional[str] = None
+        self.urls: List[str] = []
 
     def check_cached(self) -> bool:
         if self.key is not None:
             archived_playlist = ArchivedPlaylist.objects.get(id=self.key)
         else:
+            assert self.query
             try:
                 list_id = self.get_id_from_external_url(self.query)
                 archived_playlist = ArchivedPlaylist.objects.get(list_id=list_id)
@@ -282,6 +299,7 @@ class PlaylistProvider(MusicProvider):
         raise NotImplementedError()
 
     def check_downloadable(self) -> bool:
+        assert self.query
         list_id = self.get_id_from_external_url(self.query)
         if list_id is None:
             list_id = self.search_id()
@@ -350,6 +368,7 @@ class PlaylistProvider(MusicProvider):
         self, request_ip: str, archive: bool = True, manually_requested: bool = True
     ) -> None:
         if self.key is None:
+            assert self.id and self.title
             with transaction.atomic():
 
                 archived_playlist = ArchivedPlaylist.objects.create(

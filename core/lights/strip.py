@@ -15,7 +15,7 @@ class Strip:
             # LED strip is not connected
             self.initialized = False
 
-        self.brightness = 1
+        self.brightness = 1.0
 
     def set_color(self, color: Tuple[float, float, float]) -> None:
         """Sets the color of the strip to the given rgb triple."""

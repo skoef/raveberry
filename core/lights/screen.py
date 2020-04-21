@@ -1,6 +1,6 @@
 """This module handles the screen configuration."""
 
-import importlib
+import importlib.util
 import subprocess
 import time
 import os

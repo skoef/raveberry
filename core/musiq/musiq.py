@@ -15,7 +15,7 @@ import core.musiq.song_utils as song_utils
 from core.models import CurrentSong
 from core.models import QueuedSong
 from core.musiq.localdrive import LocalSongProvider
-from core.musiq.music_provider import SongProvider, PlaylistProvider
+from core.musiq.music_provider import SongProvider, PlaylistProvider, MusicProvider
 from core.musiq.player import Player
 from core.musiq.spotify import SpotifySongProvider, SpotifyPlaylistProvider
 from core.musiq.suggestions import Suggestions
@@ -26,7 +26,10 @@ from core.musiq.youtube import (
 from core.state_handler import Stateful
 from django.core.handlers.wsgi import WSGIRequest
 from django.http.response import HttpResponse
-from typing import Any, Dict, Optional, Union
+from typing import Any, Dict, Optional, Union, TYPE_CHECKING, List
+
+if TYPE_CHECKING:
+    from core.base import Base
 
 
 class Musiq(Stateful):
@@ -40,7 +43,7 @@ class Musiq(Stateful):
         self.suggestions = Suggestions(self)
 
         self.queue = QueuedSong.objects
-        self.placeholders = []
+        self.placeholders: List[Dict[str, Union[Optional[int], str]]] = []
 
         self.player = Player(self)
         self.player.start()
@@ -57,8 +60,9 @@ class Musiq(Stateful):
     ) -> HttpResponse:
         """Performs the actual requesting of the music, not an endpoint.
         Enqueues the requested song or playlist into the queue, using appropriate providers."""
-        providers = []
+        providers: List[MusicProvider] = []
 
+        provider: MusicProvider
         if playlist:
             if key is not None:
                 # an archived song was requested.
@@ -103,7 +107,6 @@ class Musiq(Stateful):
                     providers.append(YoutubeSongProvider(self, query, key))
 
         fallback = False
-        used_provider = None
         for i, provider in enumerate(providers):
             if not provider.check_cached():
                 if not provider.check_downloadable():
@@ -124,7 +127,7 @@ class Musiq(Stateful):
             # the current provider could provide the song, don't try the other ones
             used_provider = provider
             break
-        message = used_provider.ok_message
+        message = provider.ok_message
         if fallback:
             message += " (used fallback)"
         return HttpResponse(message)
@@ -132,9 +135,17 @@ class Musiq(Stateful):
     def request_music(self, request: WSGIRequest) -> HttpResponse:
         """Endpoint to request music. Calls internal function."""
         key = request.POST.get("key")
-        playlist = request.POST.get("playlist") == "true"
         query = request.POST.get("query")
+        playlist = request.POST.get("playlist") == "true"
         platform = request.POST.get("platform")
+
+        if query is None or not platform:
+            return HttpResponseBadRequest(
+                "query, playlist and platform have to be specified."
+            )
+        ikey = None
+        if key:
+            ikey = int(key)
 
         # only get ip on user requests
         if self.base.settings.logging_enabled:
@@ -144,7 +155,7 @@ class Musiq(Stateful):
         else:
             request_ip = ""
 
-        return self.do_request_music(request_ip, query, key, playlist, platform)
+        return self.do_request_music(request_ip, query, ikey, playlist, platform)
 
     def request_radio(self, request: WSGIRequest) -> HttpResponse:
         """Endpoint to request radio for the current song."""
@@ -176,9 +187,9 @@ class Musiq(Stateful):
 
     def state_dict(self) -> Dict[str, Any]:
         state_dict = self.base.state_dict()
+        current_song: Optional[Dict[str, Any]]
         try:
-            current_song = CurrentSong.objects.get()
-            current_song = model_to_dict(current_song)
+            current_song = model_to_dict(CurrentSong.objects.get())
         except CurrentSong.DoesNotExist:
             current_song = None
         song_queue = []

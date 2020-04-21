@@ -7,9 +7,12 @@ import errno
 import math
 import os
 import subprocess
-from typing import Tuple, List
+from typing import Tuple, List, TYPE_CHECKING, cast, Optional
 
 from django.conf import settings
+
+if TYPE_CHECKING:
+    from core.lights.lights import Lights
 
 
 class VizProgram:
@@ -18,7 +21,7 @@ class VizProgram:
     def __init__(self, lights: "Lights") -> None:
         self.lights = lights
         self.consumers = 0
-        self.name = None
+        self.name = "Unknown"
 
     def start(self) -> None:
         """Initializes the program, allocates resources."""
@@ -64,11 +67,11 @@ class LedProgram(VizProgram):
         """Is called once per update. Computation should happen here,
         so they can be reused in the returning functions"""
 
-    def ring_colors(self) -> None:
+    def ring_colors(self) -> List[Tuple[float, float, float]]:
         """Returns the colors for the ring, one rgb tuple for each led."""
         raise NotImplementedError()
 
-    def strip_color(self) -> None:
+    def strip_color(self) -> Tuple[float, float, float]:
         """Returns the rgb values for the strip."""
         raise NotImplementedError()
 
@@ -81,13 +84,13 @@ class Disabled(LedProgram, ScreenProgram):
         self.name = "Disabled"
 
     def draw(self) -> None:
-        print("called draw on disabled program!")
+        raise NotImplementedError()
 
-    def ring_colors(self) -> None:
-        print("called ring_colors on disabled program!")
+    def ring_colors(self) -> List[Tuple[float, float, float]]:
+        raise NotImplementedError()
 
-    def strip_color(self) -> None:
-        print("called strip_colors on disabled program!")
+    def strip_color(self) -> Tuple[float, float, float]:
+        raise NotImplementedError()
 
 
 class Fixed(LedProgram):
@@ -96,19 +99,18 @@ class Fixed(LedProgram):
     def __init__(self, lights: "Lights") -> None:
         super().__init__(lights)
         self.name = "Fixed"
-        self.color = (0, 0, 0)
 
     def compute(self) -> None:
         # show a red color if the alarm is active
         alarm_factor = self.lights.alarm_program.factor
-        if alarm_factor != -1:
-            self.color = (alarm_factor, 0, 0)
+        if alarm_factor != -1.0:
+            self.lights.fixed_color = (alarm_factor, 0, 0)
 
     def ring_colors(self) -> List[Tuple[float, float, float]]:
-        return [self.color for _ in range(self.lights.ring.LED_COUNT)]
+        return [self.lights.fixed_color for _ in range(self.lights.ring.LED_COUNT)]
 
     def strip_color(self) -> Tuple[float, float, float]:
-        return self.color
+        return self.lights.fixed_color
 
 
 class Rainbow(LedProgram):
@@ -118,11 +120,11 @@ class Rainbow(LedProgram):
         super().__init__(lights)
         self.name = "Rainbow"
         self.program_duration = 1
-        self.time_passed = 0
-        self.current_fraction = 0
+        self.time_passed = 0.0
+        self.current_fraction = 0.0
 
     def start(self) -> None:
-        self.time_passed = 0
+        self.time_passed = 0.0
 
     def compute(self) -> None:
         self.time_passed += self.lights.seconds_per_frame * self.lights.program_speed
@@ -180,7 +182,7 @@ class Adaptive(LedProgram):
             for led in range(0, self.led_count)
         ]
 
-        self.current_frame = []
+        self.current_frame: List[float] = []
 
     def start(self) -> None:
         self.cava.use()
@@ -200,11 +202,13 @@ class Adaptive(LedProgram):
                 / values_per_led
             )
 
-    def ring_colors(self) -> List[Tuple[float, ...]]:
-        return [
+    def ring_colors(self) -> List[Tuple[float, float, float]]:
+        colors = [
             tuple(factor * val for val in color)
             for factor, color in zip(self.current_frame, self.base_colors)
         ]
+        # https://github.com/python/mypy/issues/5068
+        return cast(List[Tuple[float, float, float]], colors)
 
     def strip_color(self) -> Tuple[float, float, float]:
         red = (
@@ -240,16 +244,16 @@ class Alarm(VizProgram):
     def __init__(self, lights: "Lights") -> None:
         super().__init__(lights)
         self.name = "Alarm"
-        self.time_passed = 0
+        self.time_passed = 0.0
         self.sound_count = 0
         self.increasing_duration = 0.45
         self.decreasing_duration = 0.8
         self.sound_duration = 2.1
         self.sound_repetition = 2.5
-        self.factor = -1
+        self.factor = -1.0
 
     def start(self) -> None:
-        self.time_passed = 0
+        self.time_passed = 0.0
         self.sound_count = 0
         self.factor = 0
 
@@ -281,7 +285,7 @@ class Alarm(VizProgram):
             self.factor = 0
 
     def stop(self) -> None:
-        self.factor = -1
+        self.factor = -1.0
 
 
 class Cava(VizProgram):
@@ -299,10 +303,10 @@ class Cava(VizProgram):
 
         self.frame_length = self.bars * (self.bit_format // 8)
 
-        self.current_frame = []
+        self.current_frame: List[float] = []
         self.growing_frame = b""
-        self.cava_process = None
-        self.cava_fifo = None
+        self.cava_process: Optional[subprocess.Popen[bytes]] = None
+        self.cava_fifo = -1
 
     def start(self) -> None:
         self.current_frame = [0 for _ in range(self.bars)]
@@ -362,7 +366,8 @@ class Cava(VizProgram):
         except TypeError as e:
             print("cava fifo does not exist: " + str(e))
 
-        self.cava_process.terminate()
+        if self.cava_process:
+            self.cava_process.terminate()
 
         try:
             os.remove(self.cava_fifo_path)

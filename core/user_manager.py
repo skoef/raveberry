@@ -1,41 +1,46 @@
 """This module manages and counts user accesses."""
-from typing import Any, Callable
+from datetime import datetime
+from typing import Any, Callable, Dict, TYPE_CHECKING
 
 import ipware
-from django.contrib.auth.models import User
+from django.contrib.auth.models import AbstractUser
 from django.core.handlers.wsgi import WSGIRequest
 from django.utils import timezone
+
+
+if TYPE_CHECKING:
+    from core.base import Base
 
 
 class UserManager:
     """This class counts active users and handles permissions."""
 
     @classmethod
-    def has_controls(cls, user: User) -> bool:
+    def has_controls(cls, user: AbstractUser) -> bool:
         """Determines whether the given user is allowed to control playback."""
         return (
             user.username == "mod" or user.username == "pad" or user.username == "admin"
         )
 
     @classmethod
-    def has_pad(cls, user: User) -> bool:
+    def has_pad(cls, user: AbstractUser) -> bool:
         """Determines whether the given user is allowed to access the pad."""
         return user.username == "pad" or user.username == "admin"
 
     @classmethod
-    def is_admin(cls, user: User) -> bool:
+    def is_admin(cls, user: AbstractUser) -> bool:
         """Determines whether the given user is the admin."""
         return user.username == "admin"
 
     # This dictionary needs to be static so the middleware can access it.
-    last_requests = {}
+    last_requests: Dict[str, datetime] = {}
 
     def __init__(self, base: "Base") -> None:
         self.base = base
 
         # kick users after some time without any request
         self.inactivity_period = 600
-        self.last_user_count_update = None
+        self.last_user_count_update = timezone.now()
         self.update_user_count()
 
     def update_user_count(self) -> None:

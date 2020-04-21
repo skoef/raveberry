@@ -18,11 +18,23 @@ import core.musiq.song_utils as song_utils
 from core.musiq.music_provider import SongProvider, PlaylistProvider
 from core.util import background_thread
 from django.http.response import HttpResponse
-from typing import Any, Dict, List, Optional, Union, ContextManager
+from typing import (
+    Any,
+    Dict,
+    List,
+    Optional,
+    TYPE_CHECKING,
+    Iterator,
+    cast,
+)
+
+if TYPE_CHECKING:
+    from core.musiq.musiq import Musiq
+    from core.musiq.song_utils import Metadata
 
 
 @contextmanager
-def youtube_session() -> ContextManager[requests.Session]:
+def youtube_session() -> Iterator[requests.Session]:
     """This context opens a requests session and loads the youtube cookies file."""
     session = requests.session()
     try:
@@ -102,9 +114,8 @@ class Youtube:
             if line.startswith(prefix):
                 # strip assignment and semicolon
                 initial_data = line[len(prefix) : -1]
-                initial_data = json.loads(initial_data)
-                return initial_data
-        raise Exception()
+                return json.loads(initial_data)
+        raise ValueError("Could not parse initial data from html")
 
     @staticmethod
     def get_search_suggestions(query: str) -> List[str]:
@@ -139,7 +150,7 @@ class YoutubeSongProvider(SongProvider, Youtube):
     ) -> None:
         super().__init__(musiq, query, key)
         self.type = "youtube"
-        self.info_dict = None
+        self.info_dict: Dict[str, Any] = {}
         self.ydl_opts = Youtube.get_ydl_opts()
 
     def check_downloadable(self) -> bool:
@@ -224,7 +235,9 @@ class YoutubeSongProvider(SongProvider, Youtube):
                 thread.join()
         return True
 
-    def get_metadata(self) -> Dict[str, Union[str, float]]:
+    def get_metadata(self) -> Metadata:
+        if not self.id:
+            raise ValueError()
         metadata = song_utils.get_metadata(self._get_path())
 
         metadata["internal_url"] = self.get_internal_url()
@@ -235,12 +248,16 @@ class YoutubeSongProvider(SongProvider, Youtube):
         return metadata
 
     def _get_path(self) -> str:
+        if not self.id:
+            raise ValueError()
         return song_utils.get_path(self.id + ".m4a")
 
     def get_internal_url(self) -> str:
         return "file://" + self._get_path()
 
     def get_external_url(self) -> str:
+        if not self.id:
+            raise ValueError()
         return "https://www.youtube.com/watch?v=" + self.id
 
     def get_suggestion(self) -> str:
@@ -267,10 +284,12 @@ class YoutubeSongProvider(SongProvider, Youtube):
         ]
         url = initial_data
         for step in path:
-            url = url[step]
-        return "https://www.youtube.com" + url
+            url = url[cast(str, step)]
+        return "https://www.youtube.com" + cast(str, url)
 
     def request_radio(self, request_ip: str) -> HttpResponse:
+        if not self.id:
+            raise ValueError()
         radio_id = "RD" + self.id
 
         provider = YoutubePlaylistProvider(self.musiq, "radio for " + self.id, None)
@@ -301,6 +320,8 @@ class YoutubePlaylistProvider(PlaylistProvider, Youtube):
         self.ydl_opts["extract_flat"] = True
 
     def is_radio(self) -> bool:
+        if not self.id:
+            raise ValueError()
         return self.id.startswith("RD")
 
     def search_id(self) -> Optional[str]:
@@ -326,7 +347,7 @@ class YoutubePlaylistProvider(PlaylistProvider, Youtube):
             section_renderers = section_renderers[step]
 
         list_id = None
-        for section_renderer in section_renderers:
+        for section_renderer in cast(List[Dict[str, Any]], section_renderers):
             search_results = section_renderer["itemSectionRenderer"]["contents"]
 
             try:

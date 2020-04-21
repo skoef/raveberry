@@ -7,7 +7,11 @@ from django.db import transaction
 from django.db.models import F
 
 import core.models
-from typing import Dict, Optional, Union, Tuple
+from typing import Dict, Optional, Union, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from core.models import QueuedSong
+    from core.musiq.song_utils import Metadata
 
 
 class SongQueue(models.Manager):
@@ -15,9 +19,7 @@ class SongQueue(models.Manager):
     Handles all operations on the queue."""
 
     @transaction.atomic
-    def enqueue(
-        self, metadata: Dict[str, Union[str, float]], manually_requested: bool
-    ) -> "QueuedSong":
+    def enqueue(self, metadata: Metadata, manually_requested: bool) -> QueuedSong:
         """Creates a new song at the end of the queue and returns it."""
         last = self.last()
         index = 1 if last is None else last.index + 1
@@ -33,12 +35,13 @@ class SongQueue(models.Manager):
         return song
 
     @transaction.atomic
-    def dequeue(self) -> Tuple[int, "QueuedSong"]:
+    def dequeue(self) -> Tuple[int, Optional["QueuedSong"]]:
         """Removes the first song from the queue and returns its id and the object."""
         first = self.first()
+        if first is None:
+            return -1, None
         first_id = first.id
-        if first is not None:
-            first.delete()
+        first.delete()
         self.update(index=F("index") - 1)
         return first_id, first
 

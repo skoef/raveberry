@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Union, Any
+from typing import Union, Any, TYPE_CHECKING, Dict
 
 from django.core.exceptions import PermissionDenied
 from django.core.handlers.wsgi import WSGIRequest
@@ -14,6 +14,9 @@ from django.shortcuts import render
 from core import models
 from core.state_handler import Stateful
 
+if TYPE_CHECKING:
+    from core.base import Base
+
 
 class Pad(Stateful):
     """This class handles requests on the /pad page."""
@@ -21,7 +24,7 @@ class Pad(Stateful):
     def __init__(self, base: "Base"):
         self.base = base
 
-    def state_dict(self) -> Union[str, Any]:
+    def state_dict(self) -> Dict[str, Any]:
         state_dict = self.base.state_dict()
         state_dict["pad_version"] = models.Pad.objects.get(id=1).version
         return state_dict
@@ -47,14 +50,14 @@ class Pad(Stateful):
         if version is None or version == "" or content is None:
             return HttpResponseBadRequest("No version or content supplied")
         try:
-            version = int(version)
+            iversion = int(version)
         except ValueError:
             return HttpResponseBadRequest("version is not a number")
 
         with transaction.atomic():
             pad = models.Pad.objects.get(id=1)
             current_version = pad.version
-            if current_version == version:
+            if current_version == iversion:
                 version_valid = True
                 pad.version += 1
                 pad.content = content

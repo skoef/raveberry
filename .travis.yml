@@ -5,9 +5,9 @@ services:
     - docker
 
 install:
-    - docker build -f tests/Dockerfile -t raveberry_test .
+    - docker build -f docker/tests.Dockerfile -t raveberry-test .
 script:
-    - docker run raveberry_test "python3 manage.py test tests"
+    - docker run raveberry-test "python manage.py test tests"
 
 before_deploy:
     - yarn install

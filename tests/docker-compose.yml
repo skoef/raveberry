@@ -22,6 +22,7 @@ services:
     image: raveberry-test
     environment:
       PYTHONUNBUFFERED: 1
+      DOCKER: 1
     command: bash -c "python manage.py test tests --noinput"
     volumes:
       - static-files:/opt/raveberry/static

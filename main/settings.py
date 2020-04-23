@@ -1,6 +1,7 @@
 """This module configures django."""
 
 import os
+import shutil
 import sys
 import pathlib
 
@@ -21,6 +22,8 @@ except FileNotFoundError:
     print("created secret key")
 
 DEBUG = bool(os.environ.get("DJANGO_DEBUG"))
+
+DOCKER = "DOCKER" in os.environ
 
 ALLOWED_HOSTS = ["*"]
 
@@ -71,6 +74,19 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "main.wsgi.application"
 
+# Docker changes
+if DOCKER:
+    POSTGRES_HOST = "db"
+    REDIS_HOST = "redis"
+    MOPIDY_HOST = "mopidy"
+    DEFAULT_CACHE_DIR = "/Music/raveberry/"
+    TEST_CACHE_DIR = DEFAULT_CACHE_DIR
+else:
+    POSTGRES_HOST = "127.0.0.1"
+    REDIS_HOST = "127.0.0.1"
+    MOPIDY_HOST = "localhost"
+    DEFAULT_CACHE_DIR = "~/Music/raveberry/"
+    TEST_CACHE_DIR = os.path.join(BASE_DIR, "test_cache/")
 
 # Database
 
@@ -89,7 +105,7 @@ else:
             "NAME": "raveberry",
             "USER": "raveberry",
             "PASSWORD": "raveberry",
-            "HOST": "127.0.0.1",
+            "HOST": POSTGRES_HOST,
             "PORT": "5432",
         }
     }
@@ -129,16 +145,25 @@ STATICFILES_DIRS: List[str] = [
 ]
 STATIC_URL = "/static/"
 
-# create symlink to admin static files if not present
-if not os.path.islink(os.path.join(BASE_DIR, "static/admin")):
+if not os.path.exists(os.path.join(BASE_DIR, "static/admin")):
     import django
 
     DJANGO_PATH = os.path.dirname(django.__file__)
     STATIC_ADMIN = os.path.join(DJANGO_PATH, "contrib/admin/static/admin")
-    os.symlink(
-        STATIC_ADMIN, os.path.join(BASE_DIR, "static/admin"), target_is_directory=True
-    )
-    print("linked static admin files")
+    if DOCKER:
+        # copy the files since nginx runs in another container
+        shutil.copy(
+            STATIC_ADMIN, os.path.join(BASE_DIR, "static/admin"),
+        )
+        print("copied static admin files")
+    else:
+        # create symlink to admin static files if not present
+        os.symlink(
+            STATIC_ADMIN,
+            os.path.join(BASE_DIR, "static/admin"),
+            target_is_directory=True,
+        )
+        print("linked static admin files")
 
 
 # adapted for django-compressor and sass-processor
@@ -157,7 +182,7 @@ ASGI_APPLICATION = "main.routing.APPLICATION"
 CHANNEL_LAYERS = {
     "default": {
         "BACKEND": "channels_redis.core.RedisChannelLayer",
-        "CONFIG": {"hosts": [("127.0.0.1", 6379)]},
+        "CONFIG": {"hosts": [(REDIS_HOST, 6379)]},
     },
 }
 
@@ -211,13 +236,13 @@ try:
 except FileNotFoundError:
     SONGS_CACHE_DIR = ""
 if SONGS_CACHE_DIR == "":
-    SONGS_CACHE_DIR = os.path.expanduser("~/Music/raveberry/")
+    SONGS_CACHE_DIR = os.path.expanduser(DEFAULT_CACHE_DIR)
     with open(os.path.join(BASE_DIR, "config/cache_dir"), "w") as f:
         f.write(SONGS_CACHE_DIR)
-    print("no song caching directory specified, using ~/Music/raveberry/")
+    print(f"no song caching directory specified, using {DEFAULT_CACHE_DIR}")
 
 # use a different cache directory for testing
 if "test" in sys.argv:
-    SONGS_CACHE_DIR = os.path.join(BASE_DIR, "test_cache/")
+    SONGS_CACHE_DIR = TEST_CACHE_DIR
 
 pathlib.Path(SONGS_CACHE_DIR).mkdir(parents=True, exist_ok=True)

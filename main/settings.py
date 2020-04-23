@@ -152,7 +152,7 @@ if not os.path.exists(os.path.join(BASE_DIR, "static/admin")):
     STATIC_ADMIN = os.path.join(DJANGO_PATH, "contrib/admin/static/admin")
     if DOCKER:
         # copy the files since nginx runs in another container
-        shutil.copy(
+        shutil.copytree(
             STATIC_ADMIN, os.path.join(BASE_DIR, "static/admin"),
         )
         print("copied static admin files")

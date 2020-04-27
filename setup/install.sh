@@ -64,12 +64,28 @@ fi
 
 if [ ! -z "$AUDIO_NORMALIZATION" ] && ! type rganalysis > /dev/null 2>&1 ; then
 	echo "*** Installing rganalysis ***"
+	apt-get install -y python3-dev make
+
+	# ensure that audiotools is built with python3
+	cp -a /usr/bin/python python_link_bak
+	ln -sf python3 /usr/bin/python
 
 	cd /opt
 	wget https://downloads.sourceforge.net/project/audiotools/audiotools/3.1.1/audiotools-3.1.1.tar.gz
 	tar -xf audiotools-3.1.1.tar.gz
 	rm audiotools-3.1.1.tar.gz
 	cd audiotools-3.1.1
+	make install
+
+	mv python_link_bak /usr/bin/python
+
+	# install faad to analyze aac files
+	cd /opt
+	wget http://downloads.sourceforge.net/sourceforge/faac/faad2-2.7.tar.bz2
+	tar -jxf faad2-2.7.tar.bz2
+	rm faad2-2.7.tar.bz2
+	cd faad2-2.7
+	./configure
 	make install
 
 	sudo -H pip3 install https://github.com/DarwinAwardWinner/rganalysis/archive/master.zip

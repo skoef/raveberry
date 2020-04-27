@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import pickle
+import subprocess
 from contextlib import contextmanager
 from urllib.parse import parse_qs
 from urllib.parse import urlparse
@@ -192,19 +194,27 @@ class YoutubeSongProvider(SongProvider, Youtube):
         try:
             with youtube_dl.YoutubeDL(self.ydl_opts) as ydl:
                 ydl.download([self.get_external_url()])
-
-            location = self._get_path()
-            base = os.path.splitext(location)[0]
-            thumbnail = base + ".jpg"
-            try:
-                os.remove(thumbnail)
-            except FileNotFoundError:
-                self.musiq.base.logger.info(
-                    "tried to delete " + thumbnail + " but does not exist"
-                )
-
         except youtube_dl.utils.DownloadError as e:
             error = e
+
+        location = self._get_path()
+        base = os.path.splitext(location)[0]
+        thumbnail = base + ".jpg"
+        try:
+            os.remove(thumbnail)
+        except FileNotFoundError:
+            self.musiq.base.logger.info(
+                "tried to delete " + thumbnail + " but does not exist"
+            )
+
+        try:
+            # tag the file with replaygain to perform volume normalization
+            subprocess.call(["rganalysis", location], stdout=subprocess.DEVNULL)
+        except OSError as e:
+            if e.errno == errno.ENOENT:
+                pass  # the rganalysis package was not found. Skip normalization
+            else:
+                raise
 
         if error is not None or location is None:
             self.musiq.logger.error(

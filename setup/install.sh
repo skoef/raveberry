@@ -62,5 +62,19 @@ if [[ ( ! -z "$LED_VISUALIZATION" || ! -z "$SCREEN_VISUALIZATION" ) ]] && ! type
 	cd $SERVER_ROOT
 fi
 
+if [ ! -z "$AUDIO_NORMALIZATION" ] && ! type rganalysis > /dev/null 2>&1 ; then
+	echo "*** Installing rganalysis ***"
+
+	cd /opt
+	wget https://downloads.sourceforge.net/project/audiotools/audiotools/3.1.1/audiotools-3.1.1.tar.gz
+	tar -xf audiotools-3.1.1.tar.gz
+	rm audiotools-3.1.1.tar.gz
+	cd audiotools-3.1.1
+	make install
+
+	sudo -H pip3 install https://github.com/DarwinAwardWinner/rganalysis/archive/master.zip
+	cd $SERVER_ROOT
+fi
+
 echo "*** Installing System Scripts ***"
 scripts/install_system_scripts.sh

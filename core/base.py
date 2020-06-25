@@ -1,13 +1,15 @@
 """This module provides common functionality for all pages on the site."""
 
-import logging
 import os
 import random
+from typing import Dict, Any
 
 from django.conf import settings
+from django.core.handlers.wsgi import WSGIRequest
 from django.db import transaction
 from django.http import HttpResponseBadRequest
 from django.http import HttpResponseRedirect
+from django.http.response import HttpResponse
 from django.shortcuts import render
 from django.urls import reverse
 
@@ -15,12 +17,9 @@ import core.models as models
 from core.lights.lights import Lights
 from core.musiq.musiq import Musiq
 from core.pad import Pad
-from core.settings import Settings
+from core.settings.settings import Settings
 from core.state_handler import Stateful
 from core.user_manager import UserManager
-from django.core.handlers.wsgi import WSGIRequest
-from django.http.response import HttpResponse
-from typing import Dict, Union, Any
 
 
 class Base(Stateful):
@@ -63,15 +62,15 @@ class Base(Stateful):
         Increments the visitors counter."""
         self._increment_counter()
         return {
-            "voting_system": self.settings.voting_system,
+            "voting_system": self.settings.basic.voting_system,
             "hashtag": self._get_random_hashtag(),
             "controls_enabled": self.user_manager.has_controls(request.user),
             "pad_enabled": self.user_manager.has_pad(request.user),
             "is_admin": self.user_manager.is_admin(request.user),
             "apk_link": self._get_apk_link(),
-            "youtube_enabled": self.settings.youtube_enabled,
-            "spotify_enabled": self.settings.spotify_enabled,
-            "soundcloud_enabled": self.settings.soundcloud_enabled,
+            "youtube_enabled": self.settings.platforms.youtube_enabled,
+            "spotify_enabled": self.settings.platforms.spotify_enabled,
+            "soundcloud_enabled": self.settings.platforms.soundcloud_enabled,
         }
 
     def state_dict(self) -> Dict[str, Any]:
@@ -84,9 +83,9 @@ class Base(Stateful):
                 id=1, defaults={"value": 0}
             )[0].value,
             "lights_enabled": self.lights.loop_active.is_set(),
-            "alarm": self.musiq.player.alarm_playing.is_set(),
+            "alarm": self.musiq.playback.alarm_playing.is_set(),
             "default_platform": "spotify"
-            if self.settings.spotify_enabled
+            if self.settings.platforms.spotify_enabled
             else "youtube",
         }
 

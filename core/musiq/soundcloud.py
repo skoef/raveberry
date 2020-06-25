@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+from typing import Optional, List, TYPE_CHECKING
+
 import requests
 import soundcloud
 from bs4 import BeautifulSoup
+from django.http.response import HttpResponse
 
 from core.musiq.music_provider import SongProvider, PlaylistProvider
-from django.http.response import HttpResponse
-from typing import Optional, List, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from core.musiq.musiq import Musiq
@@ -34,7 +35,7 @@ class Soundcloud:
         If not, it is created using the client-id from mopidy-soundcloud."""
         return Soundcloud._get_web_client()
 
-    def get_search_suggestions(self, query: str) -> List[Tuple[str, str]]:
+    def get_search_suggestions(self, query: str) -> List[str]:
         """Returns a list of suggested items for the given query."""
 
         response = self.web_client.get(
@@ -55,6 +56,7 @@ class SoundcloudSongProvider(SongProvider, Soundcloud):
 
     @staticmethod
     def get_id_from_internal_url(url: str) -> str:
+        """Returns the internal id based on the given url."""
         return url.split(".")[-1]
 
     def __init__(

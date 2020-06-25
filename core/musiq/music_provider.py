@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import logging
-import os
-import threading
 import time
-import uuid
+from typing import Optional, TYPE_CHECKING, Type, List
 
 from django.conf import settings
 from django.db import transaction
@@ -20,10 +18,9 @@ from core.models import (
     ArchivedPlaylist,
     ArchivedPlaylistQuery,
     PlaylistEntry,
+    QueuedSong,
 )
 from core.models import RequestLog
-from typing import Optional, Union, Dict, TYPE_CHECKING, Type, List, cast, Callable
-
 from core.util import background_thread
 
 if TYPE_CHECKING:
@@ -32,11 +29,12 @@ if TYPE_CHECKING:
 
 
 class ProviderError(Exception):
-    pass
+    """An error to indicate that an error occurred while providing music."""
 
 
 class WrongUrlError(Exception):
-    pass
+    """An error to indicate that a provider was called
+    with a url that belongs to a different service."""
 
 
 class MusicProvider:
@@ -103,24 +101,26 @@ class MusicProvider:
         """Tries to request this resource.
         Uses the local cache if possible, otherwise tries to retrieve it online."""
 
-        def enqueue_function() -> None:
+        def enqueue() -> None:
             self.persist(request_ip, archive=archive)
             self.enqueue()
+
+        enqueue_function = enqueue
 
         if not self.check_cached():
             if not self.check_available():
                 raise ProviderError()
 
             # overwrite the enqueue function and make the resource available before calling it
-            original_enqueue_function = enqueue_function
-
-            def enqueue_function() -> None:
+            def fetch_enqueue() -> None:
                 if not self.make_available():
                     self.remove_placeholder()
                     self.musiq.update_state()
                     return
 
-                original_enqueue_function()
+                enqueue()
+
+            enqueue_function = fetch_enqueue
 
         self.enqueue_placeholder(manually_requested)
 
@@ -151,12 +151,14 @@ class SongProvider(MusicProvider):
         Detects the type of provider needed and returns one of corresponding type."""
         if key is not None:
             if query is None:
-                logging.error(f"archived song requested but no query given (key {key})")
+                logging.error(
+                    "archived song requested but no query given (key %s)", key
+                )
                 raise ValueError()
             try:
                 archived_song = ArchivedSong.objects.get(id=key)
             except ArchivedSong.DoesNotExist:
-                logging.error(f"archived song requested for nonexistent key {key}")
+                logging.error("archived song requested for nonexistent key %s", key)
                 raise ValueError()
             external_url = archived_song.url
         if external_url is None:
@@ -193,11 +195,11 @@ class SongProvider(MusicProvider):
     ) -> None:
         super().__init__(musiq, query, key)
         self.ok_message = "song queued"
-        self.queued_song = None
+        self.queued_song: Optional[QueuedSong] = None
 
         if query:
             url_type = song_utils.determine_url_type(query)
-            if url_type != self.type and url_type != "unknown":
+            if url_type not in (self.type, "unknown"):
                 raise WrongUrlError(
                     f"Tried to create a {self.type} provider with: {query}"
                 )
@@ -226,11 +228,11 @@ class SongProvider(MusicProvider):
                 from core.musiq.youtube import YoutubeSongProvider
 
                 return YoutubeSongProvider.get_id_from_external_url(self.query)
-            elif url_type == "spotify":
+            if url_type == "spotify":
                 from core.musiq.spotify import SpotifySongProvider
 
                 return SpotifySongProvider.get_id_from_external_url(self.query)
-            elif url_type == "soundcloud":
+            if url_type == "soundcloud":
                 from core.musiq.soundcloud import SoundcloudSongProvider
 
                 return SoundcloudSongProvider.get_id_from_external_url(self.query)
@@ -240,10 +242,11 @@ class SongProvider(MusicProvider):
                 return self.__class__.get_id_from_external_url(archived_song.url)
             except ArchivedSong.DoesNotExist:
                 return None
-        assert False
+        logging.error("Can not extract id because neither key nor query are known")
+        return None
 
     def enqueue_placeholder(self, manually_requested) -> None:
-        metadata = {
+        metadata: Metadata = {
             "internal_url": "",
             "external_url": "",
             "artist": "",
@@ -256,6 +259,7 @@ class SongProvider(MusicProvider):
         )
 
     def remove_placeholder(self) -> None:
+        assert self.queued_song
         self.queued_song.delete()
 
     def check_available(self) -> bool:
@@ -288,15 +292,16 @@ class SongProvider(MusicProvider):
                     song=archived_song, query=self.query
                 )
 
-        if self.musiq.base.settings.logging_enabled and request_ip:
+        if self.musiq.base.settings.basic.logging_enabled and request_ip:
             RequestLog.objects.create(song=archived_song, address=request_ip)
 
     def enqueue(self) -> None:
+        assert self.queued_song
         if not self.musiq.queue.filter(id=self.queued_song.id).exists():
             # this song was already deleted, do not enqueue
             return
 
-        from core.musiq.player import Player
+        from core.musiq.playback import Playback
 
         metadata = self.get_metadata()
 
@@ -317,7 +322,7 @@ class SongProvider(MusicProvider):
         )
 
         self.musiq.update_state()
-        Player.queue_semaphore.release()
+        Playback.queue_semaphore.release()
 
     def get_suggestion(self) -> str:
         """Returns the external url of a suggested song based on this one."""
@@ -343,7 +348,9 @@ class PlaylistProvider(MusicProvider):
         Both query and key need to be specified.
         Detects the type of provider needed and returns one of corresponding type."""
         if query is None:
-            logging.error(f"archived playlist requested but no query given (key {key})")
+            logging.error(
+                "archived playlist requested but no query given (key %s)", key
+            )
             raise ValueError
         if key is None:
             logging.error("archived playlist requested but no key given")
@@ -351,7 +358,7 @@ class PlaylistProvider(MusicProvider):
         try:
             archived_playlist = ArchivedPlaylist.objects.get(id=key)
         except ArchivedPlaylist.DoesNotExist:
-            logging.error(f"archived song requested for nonexistent key {key}")
+            logging.error("archived song requested for nonexistent key %s", key)
             raise ValueError
 
         playlist_type = song_utils.determine_playlist_type(archived_playlist)
@@ -453,6 +460,11 @@ class PlaylistProvider(MusicProvider):
         if self.is_radio():
             return
 
+        assert self.id
+        if self.title is None:
+            logging.warning("Persisting a playlist with no title (id %s)", self.id)
+            self.title = ""
+
         with transaction.atomic():
             queryset = ArchivedPlaylist.objects.filter(list_id=self.id)
             if queryset.count() == 0:
@@ -474,12 +486,12 @@ class PlaylistProvider(MusicProvider):
                 playlist=archived_playlist, query=self.query
             )
 
-        if self.musiq.base.settings.logging_enabled and request_ip:
+        if self.musiq.base.settings.basic.logging_enabled and request_ip:
             RequestLog.objects.create(playlist=archived_playlist, address=request_ip)
 
     def enqueue(self) -> None:
         for index, external_url in enumerate(self.urls):
-            if index == self.musiq.base.settings.max_playlist_items:
+            if index == self.musiq.base.settings.basic.max_playlist_items:
                 break
             # request every url in the playlist as their own url
             song_provider = SongProvider.create(self.musiq, external_url=external_url)

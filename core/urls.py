@@ -6,6 +6,7 @@ import re
 from django.urls import include
 from django.urls import path
 from django.views.generic import RedirectView
+from django.conf.urls.static import static
 
 from main import settings
 
@@ -302,4 +303,4 @@ else:
                 ]
             ),
         ),
-    ]
+    ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.6.13 - 2020-06-28
+- Javascript files are copied into the nginx container. This removes the need of the shared static folder.
+- `DJANGO_MOCK` always uses the debug database, unless otherwise specified with `DJANGO_POSTGRES`. It also mocks all url patterns instead of just faking them.
+
+## 0.6.12 - 2020-06-28
+
+- Clicking the current songs shows further information as well (like it does for songs in the queue)
+- Since the little cross at the right end of the input field is a little small, the cursor now moves to the right of the text when tapped. Then, the text can be deleted with the keyboard.
+
 ## 0.6.11 - 2020-06-25
 
 - In voting mode, the voting buttons are now shown to logged in users as well.
